@@ -5,6 +5,14 @@ if [[ -r "${XDG_CACHE_HOME:-$HOME/.cache}/p10k-instant-prompt-${(%):-%n}.zsh" ]]
   source "${XDG_CACHE_HOME:-$HOME/.cache}/p10k-instant-prompt-${(%):-%n}.zsh"
 fi
 
+# History lives on a named Docker volume so it survives `--rm` restarts
+# without leaking into the host.
+export HISTFILE="${HISTFILE:-/root/.zsh-cache/.zsh_history}"
+[[ -d "${HISTFILE:h}" ]] || mkdir -p "${HISTFILE:h}"
+export HISTSIZE=10000
+export SAVEHIST=10000
+setopt INC_APPEND_HISTORY SHARE_HISTORY HIST_IGNORE_DUPS
+
 # If you come from bash you might have to change your $PATH.
 # export PATH=$HOME/bin:/usr/local/bin:$PATH
 

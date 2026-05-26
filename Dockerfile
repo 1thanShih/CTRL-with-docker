@@ -4,6 +4,9 @@ FROM ros:noetic-perception
 ENV TERM=xterm-256color
 ENV DEBIAN_FRONTEND=noninteractive
 
+# zsh history 落在 named volume 內 (/root/.zsh-cache)，與 host 完全隔離
+ENV HISTFILE=/root/.zsh-cache/.zsh_history
+
 # Pin Node.js major version (LTS)
 ARG NODE_MAJOR=20
 
@@ -33,12 +36,14 @@ RUN pip3 install --no-cache-dir \
       opencv-python-headless \
       scikit-fuzzy
 
-# 3. Node.js LTS + Claude Code CLI (pin Node major, install global, then clean)
+# 3a. Node.js LTS (cache 友善：與 Claude Code 拆層，升級 CLI 不會重裝 Node)
 RUN curl -fsSL https://deb.nodesource.com/setup_${NODE_MAJOR}.x | bash - && \
     apt-get install -y --no-install-recommends nodejs && \
-    npm install -g @anthropic-ai/claude-code && \
-    npm cache clean --force && \
     rm -rf /var/lib/apt/lists/*
+
+# 3b. Claude Code CLI (獨立一層；升 npm 套件版本時只重跑這層)
+RUN npm install -g @anthropic-ai/claude-code && \
+    npm cache clean --force
 
 # 4. 安裝與設定 Zsh, Oh My Zsh 及相關外掛
 RUN sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)" "" --unattended && \
@@ -47,14 +52,12 @@ RUN sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master
     git clone --depth=1 https://github.com/zsh-users/zsh-syntax-highlighting.git ${ZSH_CUSTOM:-~/.oh-my-zsh/custom}/plugins/zsh-syntax-highlighting && \
     chsh -s $(which zsh)
 
-# 複製使用者的設定檔
+WORKDIR /root/catkin_ws
+
+# 一次複製所有 dotfiles / cache / scripts (合層減少 image layer 數)
 COPY dotfiles/.p10k.zsh /root/.p10k.zsh
 COPY dotfiles/.zshrc /root/.zshrc
 COPY cachefile/gitstatus /root/.cache/gitstatus
-
-WORKDIR /root/catkin_ws
-
-# 複製 rules 與 entrypoint 並設定執行權限
 COPY scripts/*.rules /root/scripts/
 COPY scripts/entrypoint.sh /root/scripts/entrypoint.sh
 RUN chmod +x /root/scripts/entrypoint.sh

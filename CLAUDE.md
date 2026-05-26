@@ -11,18 +11,25 @@ This repo is a Dockerized ROS Noetic workspace for a small autonomous vehicle (D
 All ROS commands run **inside** the container — the host doesn't have ROS installed.
 
 ```bash
-make             # build image + run container (foreground zsh)
-make attach      # open a second zsh in the running container
+make             # build (if needed) + start container detached + drop into a zsh
+make up          # just start the container in background (idempotent)
+make shell       # open a zsh inside the running container — safe to run from N host terminals
+make attach      # alias for `make shell`
+make login       # one-shot ephemeral container to run `claude login`
+make run         # LEGACY: foreground --rm mode (container dies when this terminal closes)
 make stop        # stop + remove container
 make clean       # stop + remove image
 make logs        # follow container logs
+make ps          # show container status
+make purge-volumes  # delete the persisted Claude + zsh-history volumes
 ```
 
-The container is started with `--rm`, so it disappears on exit. The image is named `ros-noetic-zsh:latest`; the container is named `ros-noetic-zsh`. The container runs `--privileged --net=host` because it needs udev access (for `/dev/ttyUSBx` device remapping) and ROS multicast on the host network.
+The normal workflow is detached: `make` once to get a shell, then `make shell` from any other host terminal to open more — they're all peer `docker exec` sessions, so closing any one of them (or even all of them) does **not** kill the container. The container only goes away on `make stop`. The image is named `ros-noetic-zsh:latest`; the container is named `ros-noetic-zsh`. The container runs `--privileged --net=host` because it needs udev access (for `/dev/ttyUSBx` device remapping) and ROS multicast on the host network.
 
-Two bind mounts:
-- `./catkin_ws` → `/root/catkin_ws` — source edits picked up live.
-- `~/.claude` (host) → `/root/.claude` — Claude Code credentials persist across container restarts. Log in once with `claude login` and the auth survives.
+Mounts:
+- `./catkin_ws` (bind) → `/root/catkin_ws` — source edits picked up live.
+- `ctrl-claude-home` (named volume) → `/root/.claude` — Claude Code credentials persist across container restarts. **Fully isolated from the host's `~/.claude`** — the host filesystem is never touched. Run `make login` once to populate it.
+- `ctrl-zsh-history` (named volume) → `/root/.zsh-cache` — zsh history survives `--rm` restarts without leaking to the host.
 
 ### Build / source inside the container
 
@@ -44,13 +51,19 @@ Some launch files still hardcode `/dev/ttyUSB0` rather than the symlinks — fix
 
 ### Claude Code inside the container
 
-The image installs Node.js LTS + `@anthropic-ai/claude-code` globally. Inside the container:
+The image installs Node.js LTS + `@anthropic-ai/claude-code` globally. Credentials are stored in the `ctrl-claude-home` named volume — completely separate from the host's `~/.claude`.
 
 ```bash
+# From the host (one-shot ephemeral container, no devices, no net=host):
+make login
+
+# Or inside an already-running container:
 claude --version    # smoke test
-claude login        # first run only; creds persist via the ~/.claude bind mount
+claude login        # populates the volume; survives `--rm`
 claude              # interactive
 ```
+
+To wipe the in-container Claude state (e.g., switch accounts) without affecting your host: `make purge-volumes` then `make login` again.
 
 ## Architecture
 

@@ -50,9 +50,10 @@ roslaunch lane_follower lane_detect_bringup.launch
 # Drive forward briefly (smoke test, no perception)
 rosrun arduino_mega_ctrl move_straight_5s.py
 
-# Claude Code
+# Claude Code (creds stored in `ctrl-claude-home` named volume — host's
+# ~/.claude is NOT mounted in)
 claude              # interactive
-claude login        # first run only; creds persist via mounted ~/.claude
+claude login        # first run only; or run `make login` from the host
 ```
 
 Removed: `make rviz` (headless target — no GUI).
@@ -152,7 +153,7 @@ If any later feature needs real tests, that's a separate spec.
 - Touching node behavior inside `lane_follower/scripts/` — the recent commit history is all behavior tuning; the user owns those parameters.
 - Adding any new ROS package or new apt dependency to the image.
 - Changing the bind-mount layout for `catkin_ws/`.
-- Changing how Claude Code credentials are mounted (default: bind `~/.claude` from host).
+- Changing how Claude Code credentials are stored (default: `ctrl-claude-home` named volume, fully isolated from host `~/.claude`).
 
 **Never:**
 - Delete `legacy/` contents (even if "obviously unused").
@@ -169,7 +170,7 @@ If any later feature needs real tests, that's a separate spec.
 - [ ] `make` on a clean Pi 4 produces a running container with a successfully built workspace.
 - [ ] `docker images` shows the new image is at least 300MB smaller than the previous one.
 - [ ] `claude --version` runs inside the container.
-- [ ] `~/.claude` on the host is mounted into the container so login persists.
+- [ ] In-container Claude state lives in the `ctrl-claude-home` named volume; host `~/.claude` is **not** mounted in. `make login` populates it; the token survives `--rm`.
 - [ ] `roslaunch lane_follower lane_detect_bringup.launch` runs end-to-end on the robot, no missing-package errors.
 - [ ] `make rviz` target is removed; no X11 packages installed in the image.
 - [ ] `CLAUDE.md` updated to reflect the new package set and removed targets.
@@ -178,7 +179,7 @@ If any later feature needs real tests, that's a separate spec.
 
 1. Should `rosserial/` placeholder package directory under `catkin_ws/src/` stay (it's currently empty — the real rosserial packages come from apt)? My default: **remove the empty dir** since apt provides everything. Confirm or override.
 2. Are there any `.rules` files we need to add (`plate.rules`, `realsensecamera.rules`) or can the corresponding `cp` lines just be dropped from `entrypoint.sh`? My default: **drop the dead `cp` lines** since the hardware isn't present.
-3. Claude Code auth: mount host `~/.claude` read-write into container `/root/.claude`? My default: **yes, RW bind-mount**, so `claude login` once on host persists into the container.
+3. Claude Code auth: how to persist `/root/.claude` across `--rm` runs? **Resolved (2026-05-26):** use a Docker named volume `ctrl-claude-home`, NOT a bind to host `~/.claude`. Host filesystem stays untouched; `make login` populates the volume once.
 4. Should we add a `.dockerignore` to keep `legacy/` out of build context (faster builds)? My default: **yes**.
 
 Defaults will be applied unless overridden during Plan phase.

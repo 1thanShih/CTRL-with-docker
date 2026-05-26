@@ -6,17 +6,38 @@
 # Clone the repository
 git clone <this-repo>
 
-# Build and run the docker container
+# Build the image, start the container in the background, and drop into a zsh
 make
 
-# The container will be removed once you stop it
-# The image will also be removed once you remove the container
+# The container keeps running in the background until you stop it explicitly:
+make stop
 ```
 
 ## Open another terminal
 
+The container runs detached, so you can attach as many shells as you want — every `make shell` is a fresh `docker exec`, and closing any one terminal does **not** kill the container.
+
 ```bash
-# Make sure you have the container opened
-# Use the following command to attach the terminal
-make attach
+# From any host terminal:
+make shell        # (alias: make attach)
+```
+
+## Claude Code inside the container
+
+Credentials live in a Docker named volume (`ctrl-claude-home`) — your host's `~/.claude` is **not** touched.
+
+```bash
+make login        # one-shot ephemeral container to run `claude login`
+                  # token persists across `make stop` / `make` cycles
+```
+
+## Useful targets
+
+```bash
+make ps           # show container status
+make logs         # follow container logs
+make stop         # stop + remove container (image and volumes survive)
+make clean        # stop + remove image
+make purge-volumes  # nuke the Claude + zsh-history volumes (forces re-login)
+make run          # LEGACY foreground --rm mode (container dies with this terminal)
 ```
