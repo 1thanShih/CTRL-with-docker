@@ -13,11 +13,8 @@ cd /root/catkin_ws
 echo "Remap the serial port(ttyUSBX, ttyACMX) to custom name"
 echo " "
 
-echo "Rplidar usb connection as /dev/rplidar"
-echo "Plate usb connection as /dev/plate"
 echo "Arduino usb connection as /dev/arduino"
 echo "Camera usb connection as /dev/camera"
-echo "Realsense camera usb connection as /dev/realsensecamera"
 echo " "
 
 echo "Check these using the command : ls -l /dev|grep ttyUSB"
@@ -26,11 +23,8 @@ echo "(replace the /dev/ttyUSBX with your target device)"
 echo " "
 
 echo "Start copy rule files in scripts, to /etc/udev/rules.d/"
-cp /root/scripts/rplidar.rules /etc/udev/rules.d
-cp /root/scripts/plate.rules /etc/udev/rules.d
 cp /root/scripts/arduino.rules /etc/udev/rules.d
 cp /root/scripts/camera.rules /etc/udev/rules.d
-cp /root/scripts/realsensecamera.rules /etc/udev/rules.d
 echo " "
 
 echo "Restarting udev"
