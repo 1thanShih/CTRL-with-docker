@@ -15,6 +15,14 @@
     <arg name="turn_cam_height" default="480"/>
     <arg name="turn_cam_fps"    default="30"/>
 
+    <!-- =========================================================
+         一次性把 config/lane_follower.yaml 載到全域 namespace。
+         YAML 的頂層 key (lane_detect_node / turn_detect_node /
+         lane_controller_fuzzy) 對應每個節點的私有 namespace，
+         節點用 rospy.get_param('~xxx') 就讀得到。
+         ========================================================= -->
+    <rosparam command="load" file="$(find lane_follower)/config/lane_follower.yaml"/>
+
     <!-- rosserial_python 節點 -->
     <node pkg="rosserial_python" type="serial_node.py" name="arduino_mega_serial_node" output="screen">
         <param name="port" value="/dev/ttyUSB0"/>
@@ -49,51 +57,17 @@
         </node>
     </group>
 
-    <!-- 路標辨識節點 -->
+    <!-- 路標辨識節點 — 演算法參數從 yaml 載入，topic 仍依 dual_camera 動態決定 -->
     <node pkg="lane_follower" type="turn_detect.py" name="turn_detect_node" output="screen">
         <param name="image_topic" value="$(eval '/cam_turn/image_raw' if arg('dual_camera') else '/camera/image_raw')"/>
-        <param name="debug_topic" value="turn_detect/image_out"/>
-        <param name="show_window" value="false"/>
     </node>
 
     <!-- 車道辨識節點 -->
     <node pkg="lane_follower" type="lane_detect_v2.py" name="lane_detect_node" output="screen">
-        <!-- 訂閱上方統一發布出來的 ROS Topic -->
-        <param name="image_topic"  value="$(eval '/cam_lane/image_raw' if arg('dual_camera') else '/camera/image_raw')"/>
-        <param name="pub_topic"    value="lane_detect"/>
-        <param name="debug_topic"  value="lane_detect/image_out"/>
-        <param name="binary_topic" value="lane_detect/image_binary"/>
-        <param name="show_window"  value="false"/>
-
-        <!-- Algorithm Configurations -->
-        <param name="strict_roi"             value="true"/>
-        <param name="min_contour_area"       value="500.0"/>
-        <param name="anchor_ratio"           value="0.8"/>
-        <param name="lane_width_history_len" value="30"/>
-        <param name="enable_yaw_b"           value="true"/>
-        <param name="max_predict_frames"     value="15"/>
+        <param name="image_topic" value="$(eval '/cam_lane/image_raw' if arg('dual_camera') else '/camera/image_raw')"/>
     </node>
 
     <!-- 模糊控制節點 -->
-    <node pkg="lane_follower" type="lane_controller_fuzzy.py" name="lane_controller_fuzzy" output="screen">
-        <param name="base_speed"  value="0.5"/>
-        <param name="max_angular" value="1.4"/>
-
-        <!-- 第一次大轉彎參數 -->
-        <param name="turn_pixel_threshold_1" value="20000.0"/>
-        <param name="hard_turn_angular_1"    value="1.8"/>
-        <param name="hard_turn_duration_1"   value="0.9"/>
-
-        <!-- 第二次大轉彎參數 -->
-        <param name="turn_pixel_threshold_2" value="20000.0"/>
-        <param name="hard_turn_angular_2"    value="1.8"/>
-        <param name="hard_turn_duration_2"   value="1.2"/>
-
-        <param name="hard_turn_cooldown"          value="1.0"/>
-        <param name="sign_detect_pixel_threshold" value="13000.0"/>
-        <param name="sign_offset_threshold"       value="50.0"/>
-        <param name="sign_align_angular"          value="0.2"/>
-        <param name="scan_angular_z"              value="0.5"/>
-    </node>
+    <node pkg="lane_follower" type="lane_controller_fuzzy.py" name="lane_controller_fuzzy" output="screen"/>
 
 </launch>

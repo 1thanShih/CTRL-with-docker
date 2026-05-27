@@ -1,30 +1,70 @@
 <launch>
 
-    <node pkg="camera" type="camera.py" name="camera_node" output="screen">
-        <param name="camera_id" value="/dev/video0" />
-    </node>
+    <!-- 雙相機切換 (false = 單相機；true = 雙相機) -->
+    <arg name="dual_camera" default="false"/>
+
+    <!-- 走線相機 -->
+    <arg name="lane_cam_device" default="/dev/video0"/>
+    <arg name="lane_cam_width"  default="640"/>
+    <arg name="lane_cam_height" default="480"/>
+    <arg name="lane_cam_fps"    default="30"/>
+
+    <!-- 路標相機 (僅雙相機模式使用) -->
+    <arg name="turn_cam_device" default="/dev/video1"/>
+    <arg name="turn_cam_width"  default="640"/>
+    <arg name="turn_cam_height" default="480"/>
+    <arg name="turn_cam_fps"    default="30"/>
+
+    <!-- 單相機：走線與路標共用 -->
+    <group unless="$(arg dual_camera)">
+        <node pkg="camera" type="camera.py" name="camera_node" output="screen">
+            <param name="camera_id" value="$(arg lane_cam_device)"/>
+            <param name="width"     value="$(arg lane_cam_width)"/>
+            <param name="height"    value="$(arg lane_cam_height)"/>
+            <param name="fps"       value="$(arg lane_cam_fps)"/>
+        </node>
+    </group>
+
+    <!-- 雙相機：走線與路標各自一顆 -->
+    <group if="$(arg dual_camera)">
+        <node pkg="camera" type="camera.py" name="camera_node_lane" output="screen">
+            <param name="camera_id" value="$(arg lane_cam_device)"/>
+            <param name="width"     value="$(arg lane_cam_width)"/>
+            <param name="height"    value="$(arg lane_cam_height)"/>
+            <param name="fps"       value="$(arg lane_cam_fps)"/>
+            <remap from="/camera/image_raw" to="/cam_lane/image_raw"/>
+        </node>
+        <node pkg="camera" type="camera.py" name="camera_node_turn" output="screen">
+            <param name="camera_id" value="$(arg turn_cam_device)"/>
+            <param name="width"     value="$(arg turn_cam_width)"/>
+            <param name="height"    value="$(arg turn_cam_height)"/>
+            <param name="fps"       value="$(arg turn_cam_fps)"/>
+            <remap from="/camera/image_raw" to="/cam_turn/image_raw"/>
+        </node>
+    </group>
 
     <!-- 車道辨識節點 -->
     <node pkg="lane_follower" type="lane_detect_v2.py" name="lane_detect_node" output="screen">
-        <!-- 訂閱上方統一發布出來的 ROS Topic -->
-        <param name="image_topic" value="/camera/image_raw" />
-        <param name="pub_topic" value="lane_detect" />
-        <param name="debug_topic" value="lane_detect/image_out" />
-        <param name="show_window" value="false" />
-        
+        <param name="image_topic"  value="$(eval '/cam_lane/image_raw' if arg('dual_camera') else '/camera/image_raw')"/>
+        <param name="pub_topic"    value="lane_detect"/>
+        <param name="debug_topic"  value="lane_detect/image_out"/>
+        <param name="binary_topic" value="lane_detect/image_binary"/>
+        <param name="show_window"  value="false"/>
+
         <!-- Algorithm Configurations -->
-        <param name="strict_roi" value="true" />
-        <param name="min_contour_area" value="500.0" />
-        <param name="anchor_ratio" value="0.8" />
-        <param name="lane_width_history_len" value="30" />
-        <param name="enable_yaw_b" value="true" />
-        <param name="max_predict_frames" value="15" />
+        <param name="strict_roi"             value="true"/>
+        <param name="min_contour_area"       value="500.0"/>
+        <param name="anchor_ratio"           value="0.8"/>
+        <param name="lane_width_history_len" value="30"/>
+        <param name="enable_yaw_b"           value="true"/>
+        <param name="max_predict_frames"     value="15"/>
     </node>
 
+    <!-- 路標辨識節點 -->
     <node pkg="lane_follower" type="turn_detect.py" name="turn_detect_node" output="screen">
-        <param name="image_topic" value="/camera/image_raw" />
-        <param name="debug_topic" value="turn_detect/image_out" />
-        <param name="show_window" value="false" />
+        <param name="image_topic" value="$(eval '/cam_turn/image_raw' if arg('dual_camera') else '/camera/image_raw')"/>
+        <param name="debug_topic" value="turn_detect/image_out"/>
+        <param name="show_window" value="false"/>
     </node>
 
 </launch>

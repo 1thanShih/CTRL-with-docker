@@ -1,0 +1,818 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>change · 2026-05-27 code-review-and-quality 落實</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg:            #ffffff;
+    --bg-soft:       #fbfbfd;
+    --bg-card:       #ffffff;
+    --text:          #1d1d1f;
+    --text-soft:     #6e6e73;
+    --text-faint:    #86868b;
+    --border:        #e5e5e7;
+    --border-soft:   #f0f0f2;
+    --accent:        #0066cc;
+    --accent-soft:   #e8f1fb;
+    --warn:          #c84a1a;
+    --warn-soft:     #fff1ea;
+    --ok:            #1f8a4d;
+    --ok-soft:       #ecf7f0;
+    --del:           #b03060;
+    --del-soft:      #fbeef4;
+    --radius:        12px;
+    --radius-sm:     8px;
+    --mono:          'JetBrains Mono', 'SF Mono', ui-monospace, Menlo, Consolas, monospace;
+  }
+
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+
+  body {
+    margin: 0;
+    font-family: var(--mono);
+    font-weight: 400;
+    color: var(--text);
+    background: var(--bg);
+    -webkit-font-smoothing: antialiased;
+    line-height: 1.55;
+    font-size: 14px;
+  }
+
+  /* ---------- layout ---------- */
+  .app {
+    display: grid;
+    grid-template-columns: 260px minmax(0, 1fr);
+    min-height: 100vh;
+  }
+
+  aside.nav {
+    position: sticky;
+    top: 0;
+    align-self: start;
+    height: 100vh;
+    overflow-y: auto;
+    padding: 36px 24px;
+    background: var(--bg-soft);
+    border-right: 1px solid var(--border-soft);
+  }
+
+  aside.nav .brand {
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--text);
+    margin-bottom: 4px;
+    letter-spacing: -0.01em;
+  }
+
+  aside.nav .brand-sub {
+    font-size: 11px;
+    color: var(--text-faint);
+    margin-bottom: 28px;
+  }
+
+  aside.nav h4 {
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--text-faint);
+    margin: 24px 0 8px;
+  }
+
+  aside.nav ul { list-style: none; margin: 0; padding: 0; }
+
+  aside.nav li a {
+    display: block;
+    padding: 6px 10px;
+    margin: 1px -10px;
+    font-size: 12.5px;
+    color: var(--text-soft);
+    text-decoration: none;
+    border-radius: 6px;
+    transition: background 0.15s, color 0.15s;
+  }
+
+  aside.nav li a:hover {
+    background: rgba(0, 102, 204, 0.06);
+    color: var(--accent);
+  }
+
+  main { padding: 64px 80px 120px; max-width: 1100px; }
+
+  /* ---------- hero ---------- */
+  .hero {
+    padding: 16px 0 56px;
+    border-bottom: 1px solid var(--border-soft);
+    margin-bottom: 56px;
+  }
+
+  .hero .eyebrow {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: var(--text-faint);
+    margin-bottom: 12px;
+  }
+
+  .hero h1 {
+    font-size: 32px;
+    font-weight: 500;
+    letter-spacing: -0.02em;
+    margin: 0 0 14px;
+    color: var(--text);
+  }
+
+  .hero p.lead {
+    font-size: 15px;
+    color: var(--text-soft);
+    max-width: 760px;
+    margin: 0 0 16px;
+    line-height: 1.65;
+  }
+
+  .meta {
+    display: flex;
+    gap: 18px;
+    flex-wrap: wrap;
+    font-size: 11.5px;
+    color: var(--text-faint);
+    margin-top: 22px;
+  }
+  .meta span strong { color: var(--text-soft); font-weight: 500; margin-right: 4px; }
+
+  /* ---------- sections ---------- */
+  section { margin: 0 0 80px; }
+
+  section > h2 {
+    font-size: 22px;
+    font-weight: 500;
+    letter-spacing: -0.01em;
+    margin: 0 0 8px;
+    color: var(--text);
+  }
+
+  section > p.section-sub {
+    color: var(--text-soft);
+    margin: 0 0 28px;
+    font-size: 13.5px;
+    max-width: 760px;
+  }
+
+  h3 {
+    font-size: 16px;
+    font-weight: 500;
+    margin: 28px 0 10px;
+    color: var(--text);
+    letter-spacing: -0.005em;
+  }
+
+  h4 {
+    font-size: 12.5px;
+    font-weight: 600;
+    margin: 22px 0 8px;
+    color: var(--text);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+
+  p { color: var(--text-soft); margin: 0 0 12px; }
+
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+
+  code, .mono { font-family: var(--mono); font-size: 0.92em; }
+  p code, li code, td code {
+    background: var(--bg-soft);
+    border: 1px solid var(--border-soft);
+    border-radius: 4px;
+    padding: 1px 6px;
+    color: var(--text);
+    font-size: 0.86em;
+  }
+
+  /* ---------- cards ---------- */
+  .card {
+    background: var(--bg-card);
+    border: 1px solid var(--border-soft);
+    border-radius: var(--radius);
+    padding: 26px 32px;
+    margin: 18px 0;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.02), 0 4px 16px rgba(0,0,0,0.025);
+  }
+
+  .card-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 16px;
+    margin-bottom: 12px;
+  }
+
+  .card-head h3 { margin: 0; }
+
+  .tag {
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--text-faint);
+    background: var(--bg-soft);
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    padding: 3px 10px;
+    white-space: nowrap;
+  }
+
+  .tag.accent { color: var(--accent); background: var(--accent-soft); border-color: transparent; }
+  .tag.warn   { color: var(--warn);   background: var(--warn-soft);   border-color: transparent; }
+  .tag.ok     { color: var(--ok);     background: var(--ok-soft);     border-color: transparent; }
+  .tag.del    { color: var(--del);    background: var(--del-soft);    border-color: transparent; }
+
+  /* ---------- diff blocks ---------- */
+  pre {
+    background: var(--bg-soft);
+    border: 1px solid var(--border-soft);
+    border-radius: var(--radius-sm);
+    padding: 14px 18px;
+    overflow-x: auto;
+    font-size: 12.5px;
+    line-height: 1.6;
+    color: var(--text);
+    margin: 12px 0;
+  }
+
+  pre code { background: none; border: none; padding: 0; font-size: inherit; }
+
+  .diff .add { background: rgba(31, 138, 77, 0.08); color: #176c3a; display: block; padding: 0 6px; }
+  .diff .del { background: rgba(176, 48, 96, 0.07); color: #8a234c; display: block; padding: 0 6px; }
+  .diff .ctx { display: block; padding: 0 6px; color: var(--text-soft); }
+
+  /* ---------- tables ---------- */
+  .table-wrap {
+    border: 1px solid var(--border-soft);
+    border-radius: var(--radius-sm);
+    overflow: hidden;
+    margin: 16px 0;
+  }
+
+  table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+
+  th {
+    text-align: left;
+    font-weight: 500;
+    color: var(--text-faint);
+    font-size: 10.5px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    background: var(--bg-soft);
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--border-soft);
+  }
+
+  td {
+    padding: 11px 14px;
+    border-bottom: 1px solid var(--border-soft);
+    vertical-align: top;
+    color: var(--text);
+  }
+
+  td:first-child { color: var(--text); font-weight: 500; }
+  tr:last-child td { border-bottom: none; }
+
+  /* ---------- callout ---------- */
+  .callout {
+    background: var(--accent-soft);
+    border-left: 3px solid var(--accent);
+    padding: 14px 18px;
+    border-radius: 0 8px 8px 0;
+    font-size: 13px;
+    color: var(--text);
+    margin: 18px 0;
+  }
+  .callout.warn { background: var(--warn-soft); border-left-color: var(--warn); }
+  .callout.warn strong { color: var(--warn); }
+  .callout strong { color: var(--accent); }
+
+  /* ---------- spec list ---------- */
+  .spec {
+    display: grid;
+    grid-template-columns: 150px 1fr;
+    gap: 6px 24px;
+    margin: 14px 0;
+    font-size: 12.5px;
+  }
+  .spec dt {
+    color: var(--text-faint);
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    padding-top: 2px;
+  }
+  .spec dd { margin: 0; color: var(--text); }
+
+  ul.tight { margin: 8px 0; padding-left: 20px; color: var(--text-soft); }
+  ul.tight li { margin: 3px 0; }
+
+  /* ---------- footer ---------- */
+  footer {
+    margin-top: 80px;
+    padding-top: 32px;
+    border-top: 1px solid var(--border-soft);
+    color: var(--text-faint);
+    font-size: 11px;
+  }
+
+  /* ---------- responsive ---------- */
+  @media (max-width: 900px) {
+    .app { grid-template-columns: 1fr; }
+    aside.nav {
+      position: static;
+      height: auto;
+      border-right: none;
+      border-bottom: 1px solid var(--border-soft);
+    }
+    main { padding: 40px 24px 80px; }
+    .hero h1 { font-size: 26px; }
+    .spec { grid-template-columns: 1fr; gap: 2px; }
+    .spec dt { margin-top: 8px; }
+  }
+</style>
+</head>
+<body>
+
+<div class="app">
+
+  <!-- ====================== sidebar ====================== -->
+  <aside class="nav">
+    <div class="brand">lane_follower / change</div>
+    <div class="brand-sub">2026-05-27 · code-review-and-quality</div>
+
+    <h4>概覽</h4>
+    <ul>
+      <li><a href="#intro">本次變更摘要</a></li>
+      <li><a href="#summary">影響檔案 / 風險</a></li>
+    </ul>
+
+    <h4>修改項目</h4>
+    <ul>
+      <li><a href="#fix1">Fix #1 · 安全看門狗</a></li>
+      <li><a href="#fix2">Fix #2 · 掃描 timeout</a></li>
+      <li><a href="#fix3">Fix #3 · 量測 / ROI 效能</a></li>
+      <li><a href="#fix4">Fix #4 · YAML 配置檔</a></li>
+      <li><a href="#fix5">Fix #5 · turn_detect 參數化</a></li>
+      <li><a href="#fix6">Fix #6 · 死碼清理</a></li>
+      <li><a href="#fix7">附帶 · 拿掉 anonymous=True</a></li>
+    </ul>
+
+    <h4>驗證</h4>
+    <ul>
+      <li><a href="#verify">本地驗證</a></li>
+      <li><a href="#followup">尚待測試</a></li>
+    </ul>
+  </aside>
+
+  <!-- ====================== main ====================== -->
+  <main>
+
+    <!-- =============== hero =============== -->
+    <header class="hero" id="intro">
+      <div class="eyebrow">change log · /catkin_ws/change/</div>
+      <h1>code-review-and-quality 落實</h1>
+      <p class="lead">
+        將 2026-05-27 review 出的優先 punch list 全數實作。重點是兩個會危及自走車安全的問題
+        （lane_detect 斷訊時車不會停、找不到路標時會原地空轉），以及 review 過程中發現
+        「<code>config/lane_follower.yaml</code> 在 <code>CLAUDE.md</code> 有寫但實際不存在」這個重要文件缺口。
+        本次改動同時清掉一批死碼（<code>FitResult</code>、未使用的 typing import、<code>_reserved</code>），
+        並把 <code>turn_detect.py</code> 的演算法常數全部抽到 ROS param，讓三個節點的調參入口
+        統一在新建的 YAML 裡。
+      </p>
+
+      <div class="meta">
+        <span><strong>日期：</strong>2026-05-27</span>
+        <span><strong>觸發：</strong>/agent-skills:code-review-and-quality 全部三支腳本</span>
+        <span><strong>檔案：</strong>5 modified · 2 created</span>
+        <span><strong>風險：</strong>需要 catkin_make + 重啟所有節點</span>
+      </div>
+    </header>
+
+    <!-- =============== summary =============== -->
+    <section id="summary">
+      <h2>影響檔案 / 風險</h2>
+      <p class="section-sub">本次共修改 5 份、新增 2 份檔案。所有 .py 已通過 <code>python3 -m py_compile</code> 語法檢查。</p>
+
+      <div class="table-wrap">
+      <table>
+        <thead><tr><th style="width:38%">檔案</th><th style="width:14%">狀態</th><th>變動性質</th></tr></thead>
+        <tbody>
+          <tr>
+            <td><code>src/lane_follower/scripts/lane_controller_fuzzy.py</code></td>
+            <td><span class="tag warn">behavioural</span></td>
+            <td>新增 lane data watchdog Timer + scan timeout + shebang 改 python3 + 拿掉 anonymous=True</td>
+          </tr>
+          <tr>
+            <td><code>src/lane_follower/scripts/lane_detect_v2.py</code></td>
+            <td><span class="tag accent">perf + cleanup</span></td>
+            <td>vectorize <code>avg_x_in_band</code>、cache ROI mask、刪除 <code>FitResult</code> / <code>_reserved</code> / 未使用 typing</td>
+          </tr>
+          <tr>
+            <td><code>src/lane_follower/scripts/turn_detect.py</code></td>
+            <td><span class="tag accent">param surface</span></td>
+            <td>所有演算法常數改為 <code>rospy.get_param</code>，新增 <code>TurnParams</code> 結構傳遞</td>
+          </tr>
+          <tr>
+            <td><code>src/lane_follower/launch/lane_detect_bringup.launch</code></td>
+            <td><span class="tag">refactor</span></td>
+            <td>移除所有 inline <code>&lt;param&gt;</code>，改用 <code>&lt;rosparam command="load" file=".../config/lane_follower.yaml"/&gt;</code></td>
+          </tr>
+          <tr>
+            <td><code>src/lane_follower/config/lane_follower.yaml</code></td>
+            <td><span class="tag ok">new</span></td>
+            <td>CLAUDE.md 早就提到但實際不存在的總配置檔；現補上</td>
+          </tr>
+          <tr>
+            <td><code>change/2026-05-27_code-review-and-quality.html</code></td>
+            <td><span class="tag ok">new</span></td>
+            <td>本檔 — change log 首頁</td>
+          </tr>
+        </tbody>
+      </table>
+      </div>
+
+      <div class="callout warn">
+        <strong>注意：</strong>
+        Launch 與 YAML 的綁定依賴節點名固定 (<code>lane_detect_node</code> / <code>turn_detect_node</code> /
+        <code>lane_controller_fuzzy</code>)。原本所有 <code>rospy.init_node</code> 都帶 <code>anonymous=True</code>，
+        會在節點名後加隨機字尾，導致 <code>~xxx</code> 對應不到 yaml 的 namespace。
+        本次一併拿掉 <code>anonymous=True</code> — 詳見
+        <a href="#fix7">附帶修正</a>。
+      </div>
+    </section>
+
+    <!-- =============== fix #1 watchdog =============== -->
+    <section id="fix1">
+      <h2>Fix #1 · 安全看門狗：lane_detect 斷訊時自動煞車</h2>
+      <p class="section-sub">最高優先級。原本只有 <code>lane_callback</code> 會發 Twist，<code>lane_detect_v2.py</code> 一旦掛掉就沒人通知 Arduino 停車。</p>
+
+      <div class="card">
+        <div class="card-head">
+          <h3>lane_controller_fuzzy.py</h3>
+          <span class="tag warn">safety critical</span>
+        </div>
+
+        <h4>新增參數</h4>
+        <dl class="spec">
+          <dt>~lane_data_timeout</dt>
+          <dd>連續多久沒收到 <code>lane_detect</code> 就視為斷訊（秒，預設 <code>0.3</code>）</dd>
+        </dl>
+
+        <h4>新增 Timer + watchdog callback</h4>
+<pre class="diff"><span class="ctx">self.watchdog_timer = rospy.Timer(rospy.Duration(0.1), self._watchdog_cb)</span></pre>
+<pre class="diff"><span class="add">def _watchdog_cb(self, _event):</span>
+<span class="add">    # 若 lane_detect 還沒送過任何訊息，watchdog 不主動踩煞車（等啟動）</span>
+<span class="add">    if self.last_lane_time &lt;= 0.0:</span>
+<span class="add">        return</span>
+<span class="add">    # 大轉彎進行中由 lane_callback 的計時邏輯掌控，不要被 watchdog 打斷</span>
+<span class="add">    now = rospy.Time.now().to_sec()</span>
+<span class="add">    if now &lt; self.hard_turn_end_time:</span>
+<span class="add">        return</span>
+<span class="add">    if (now - self.last_lane_time) &gt; self.lane_data_timeout:</span>
+<span class="add">        rospy.logwarn_throttle(</span>
+<span class="add">            1.0,</span>
+<span class="add">            "lane_detect stale for %.2fs &gt; %.2fs, publishing zero Twist",</span>
+<span class="add">            now - self.last_lane_time, self.lane_data_timeout,</span>
+<span class="add">        )</span>
+<span class="add">        self._publish(0.0, 0.0)</span></pre>
+
+        <h4>lane_callback 第一行記錄時間戳</h4>
+<pre class="diff"><span class="ctx">def lane_callback(self, msg):</span>
+<span class="ctx">    now = rospy.Time.now().to_sec()</span>
+<span class="add">    with self.state_lock:</span>
+<span class="add">        self.last_lane_time = now</span></pre>
+
+        <p>State lock (<code>threading.Lock</code>) 是預防之後切換到 <code>MultiThreadedSpinner</code> 時，
+        Timer / Subscriber 同時讀寫 <code>last_lane_time</code>。預設單執行緒下其實不需要，但這層保險近乎免費。</p>
+
+        <p><strong>邏輯細節：</strong>看門狗有兩個重要的 exception 路徑——啟動前 (<code>last_lane_time == 0</code>) 與
+        大轉彎進行中。前者避免節點剛起來就把車鎖死、後者避免 hard turn 期間被誤判（hard turn 是
+        計時驅動，本來就會自己 publish）。</p>
+      </div>
+    </section>
+
+    <!-- =============== fix #2 scan timeout =============== -->
+    <section id="fix2">
+      <h2>Fix #2 · 尋標掃描 timeout</h2>
+      <p class="section-sub">原本 <code>is_scanning</code> 一旦進入只能靠新的路標訊號清除；路標如果永遠看不到（鏡頭被遮、turn_detect 掛掉），車會永遠原地左右擺。</p>
+
+      <div class="card">
+        <div class="card-head">
+          <h3>lane_controller_fuzzy.py · lane_callback</h3>
+          <span class="tag warn">bug fix</span>
+        </div>
+
+        <h4>新增參數</h4>
+        <dl class="spec">
+          <dt>~max_scan_duration</dt>
+          <dd>掃描尋標的最大持續時間（秒，預設 <code>4.0</code>）；逾時退回一般循線</dd>
+        </dl>
+
+<pre class="diff"><span class="ctx"># 第二優先級：尋標掃描 (停止前進、左右擺動找路標)</span>
+<span class="ctx">if self.is_scanning:</span>
+<span class="add">    if (now - self.scan_start_time) &gt; self.max_scan_duration:</span>
+<span class="add">        rospy.logwarn("Scan timeout %.2fs exceeded, resuming lane following",</span>
+<span class="add">                      self.max_scan_duration)</span>
+<span class="add">        self.is_scanning = False</span>
+<span class="add">    else:</span>
+<span class="del">    self._publish(0.0, self._scan_angular(now))</span>
+<span class="del">    return</span>
+<span class="add">        self._publish(0.0, self._scan_angular(now))</span>
+<span class="add">        return</span></pre>
+
+        <p>逾時不直接 return — 讓控制流繼續走到「第四優先級：正常模糊循線」，
+        車就能用 <em>當下最後一筆</em> lane 資料繼續往前，而不是僵在掃描狀態。</p>
+      </div>
+    </section>
+
+    <!-- =============== fix #3 perf =============== -->
+    <section id="fix3">
+      <h2>Fix #3 · lane_detect 量測與 ROI mask 效能</h2>
+      <p class="section-sub">兩個小但每幀都發生的浪費。針對 30 FPS × 640×480 的工作負載，這兩處合起來節省的記憶體寫入量可觀。</p>
+
+      <div class="card">
+        <div class="card-head">
+          <h3>lane_detect_v2.py · measure_at_anchor</h3>
+          <span class="tag accent">perf</span>
+        </div>
+
+        <h4>原本：每側、每幀 rasterize 一張 H×W mask 再切 band</h4>
+<pre class="diff"><span class="del">mask = np.zeros((frame_height, frame_width), dtype=np.uint8)</span>
+<span class="del">cnt = points.reshape(-1, 1, 2)</span>
+<span class="del">cv2.fillPoly(mask, [cnt], 255)</span>
+<span class="del">y0 = max(0, anchor_y - band_half)</span>
+<span class="del">y1 = min(frame_height, anchor_y + band_half + 1)</span>
+<span class="del">band = mask[y0:y1, :]</span>
+<span class="del">_, xs = np.where(band &gt; 0)</span></pre>
+
+        <h4>改為 vectorized 條件遮罩</h4>
+<pre class="diff"><span class="add">pts = points.reshape(-1, 2)</span>
+<span class="add">ys = pts[:, 1]</span>
+<span class="add">band_mask = (ys &gt;= anchor_y - band_half) &amp; (ys &lt;= anchor_y + band_half)</span>
+<span class="add">if not band_mask.any():</span>
+<span class="add">    return None</span>
+<span class="add">return float(pts[band_mask, 0].mean())</span></pre>
+
+        <p>每側成本從 O(W·H) 寫入 + O(W·H) 掃描，降為 O(N_points) 比較與平均。
+        當輪廓只有上千個點時，差距至少一個量級。</p>
+      </div>
+
+      <div class="card">
+        <div class="card-head">
+          <h3>lane_detect_v2.py · _build_roi_mask</h3>
+          <span class="tag accent">perf</span>
+        </div>
+
+        <h4>加上 <code>(h, w, ratios)</code> 為 key 的模組級快取</h4>
+<pre class="diff"><span class="add">_ROI_MASK_CACHE: dict[tuple[int, int, tuple[tuple[float, float], ...]], np.ndarray] = {}</span>
+
+<span class="ctx">def _build_roi_mask(height, width, cfg):</span>
+<span class="add">    key = (height, width, cfg.ROI_POLYGON_RATIOS)</span>
+<span class="add">    cached = _ROI_MASK_CACHE.get(key)</span>
+<span class="add">    if cached is not None:</span>
+<span class="add">        return cached</span>
+<span class="ctx">    mask = np.zeros((height, width), dtype=np.uint8)</span>
+<span class="ctx">    ...</span>
+<span class="add">    _ROI_MASK_CACHE[key] = mask</span>
+<span class="ctx">    return mask</span></pre>
+
+        <p>ROI ratios 是 frozen Config 欄位，runtime 永遠不變，所以 cache 可以無限期保留。
+        第一次處理新解析度時付一次代價，之後每幀直接命中。</p>
+      </div>
+    </section>
+
+    <!-- =============== fix #4 yaml =============== -->
+    <section id="fix4">
+      <h2>Fix #4 · 建立 config/lane_follower.yaml</h2>
+      <p class="section-sub">補上 CLAUDE.md 一直在指但實際不存在的設定檔；同時把 launch 內所有 inline param 抽離。</p>
+
+      <div class="card">
+        <div class="card-head">
+          <h3>新檔：<code>src/lane_follower/config/lane_follower.yaml</code></h3>
+          <span class="tag ok">new file</span>
+        </div>
+
+        <p>頂層 key 直接對應 ROS 節點名，所以一次 <code>&lt;rosparam command="load"/&gt;</code> 到全域就夠，
+        三個節點透過 <code>rospy.get_param('~xxx')</code> 就讀到自己 namespace 下的值。</p>
+
+<pre><code>lane_detect_node:
+  strict_roi: true
+  min_contour_area: 500.0
+  anchor_ratio: 0.8
+  lane_width_history_len: 30
+  enable_yaw_b: true
+  max_predict_frames: 15
+  ...
+
+turn_detect_node:
+  blur_kernel: 5
+  threshold_method: "otsu"
+  min_area: 1000.0
+  aspect_ratio_min: 0.5
+  ...
+
+lane_controller_fuzzy:
+  base_speed: 0.5
+  max_angular: 1.4
+  turn_pixel_threshold_1: 20000.0
+  ...
+  lane_data_timeout: 0.3    # ← 本次新增
+  max_scan_duration: 4.0    # ← 本次新增</code></pre>
+      </div>
+
+      <div class="card">
+        <div class="card-head">
+          <h3>lane_detect_bringup.launch — 簡化後</h3>
+          <span class="tag">refactor</span>
+        </div>
+
+        <p>原本三個節點下面總共 25 行 <code>&lt;param&gt;</code> 全部移除，改為一行：</p>
+<pre><code>&lt;rosparam command="load" file="$(find lane_follower)/config/lane_follower.yaml"/&gt;</code></pre>
+        <p>節點區塊只保留動態決定的東西（<code>image_topic</code> 依 <code>dual_camera</code> 切換）。</p>
+      </div>
+    </section>
+
+    <!-- =============== fix #5 turn_detect =============== -->
+    <section id="fix5">
+      <h2>Fix #5 · turn_detect 參數化 + shebang</h2>
+      <p class="section-sub">原本所有閾值都寫在模組頂層常數；要調 <code>MIN_AREA</code> 就得改原始碼。</p>
+
+      <div class="card">
+        <div class="card-head">
+          <h3>turn_detect.py</h3>
+          <span class="tag accent">param surface</span>
+        </div>
+
+        <h4>新增 <code>TurnParams</code> dataclass</h4>
+        <p>把 11 個原本散落的 module-level 常數整合成單一物件，注入 <code>preprocess</code> /
+        <code>find_triangle</code> / <code>Tracker</code>。常數名稱降級成
+        <code>DEFAULT_*</code>，只在沒有 rosparam 時 fallback。</p>
+
+<pre><code>@dataclass
+class TurnParams:
+    blur_kernel: int = DEFAULT_BLUR_KERNEL
+    threshold_method: str = DEFAULT_THRESHOLD_METHOD
+    invert_binary: bool = DEFAULT_INVERT_BINARY
+    min_area: float = DEFAULT_MIN_AREA
+    aspect_ratio_min: float = DEFAULT_ASPECT_RATIO_MIN
+    aspect_ratio_max: float = DEFAULT_ASPECT_RATIO_MAX
+    area_ratio_min: float = DEFAULT_AREA_RATIO_MIN
+    poly_epsilon_ratio: float = DEFAULT_POLY_EPSILON_RATIO
+    confirm_frames: int = DEFAULT_CONFIRM_FRAMES
+    lost_frames: int = DEFAULT_LOST_FRAMES
+    same_object_dist_ratio: float = DEFAULT_SAME_OBJECT_DIST_RATIO</code></pre>
+
+        <h4>節點啟動時從 rosparam 灌值</h4>
+<pre><code>self.params = TurnParams(
+    blur_kernel=int(rospy.get_param('~blur_kernel', DEFAULT_BLUR_KERNEL)),
+    threshold_method=str(rospy.get_param('~threshold_method', ...)),
+    ...
+)
+self.tracker = Tracker(self.params)</code></pre>
+
+        <h4>順手修正 shutdown / topic 預設</h4>
+        <ul class="tight">
+          <li>新增 <code>rospy.on_shutdown(self._on_shutdown)</code> — 即使 <code>Ctrl+C</code> 也會關掉 OpenCV window</li>
+          <li>預設 <code>image_topic</code> 從 <code>/usb_cam/image_raw</code> 改為 <code>/camera/image_raw</code>，與 launch 對齊</li>
+          <li>預設 <code>SHOW_WINDOW</code> 從 <code>True</code> 改為 <code>False</code> — 在無 GUI 環境跑 ROS node 默認不應該開窗</li>
+        </ul>
+      </div>
+
+      <div class="card">
+        <div class="card-head">
+          <h3>lane_controller_fuzzy.py — shebang + threading</h3>
+          <span class="tag">polish</span>
+        </div>
+<pre class="diff"><span class="del">#!/usr/bin/env python</span>
+<span class="add">#!/usr/bin/env python3</span>
+<span class="ctx">import rospy</span>
+<span class="ctx">from geometry_msgs.msg import Twist</span>
+<span class="ctx">import sys</span>
+<span class="add">import threading</span></pre>
+      </div>
+    </section>
+
+    <!-- =============== fix #6 dead code =============== -->
+    <section id="fix6">
+      <h2>Fix #6 · 死碼清理</h2>
+      <p class="section-sub">Review 階段標出的 dead code — 一個假佔位的 dataclass、一個從來沒被讀的 reserved 欄位、若干未使用 typing import。</p>
+
+      <div class="card">
+        <div class="card-head">
+          <h3>lane_detect_v2.py</h3>
+          <span class="tag del">removed</span>
+        </div>
+
+        <h4>刪除項目</h4>
+        <ul class="tight">
+          <li><code>FitResult</code> dataclass（14 個欄位）— 唯一的構造者是
+            <code>fit_mock = FitResult(None, None, ...)</code>，render path 完全沒讀任何欄位</li>
+          <li><code>RenderInputs.fit</code> 欄位 — 同步移除</li>
+          <li><code>process_frame</code> 中的 <code>fit_mock = ...</code> 建構行</li>
+          <li><code>REJECT_NO_POINTS</code> / <code>REJECT_Y_SPAN_TOO_SMALL</code> /
+              <code>REJECT_CURVATURE_TOO_LARGE</code> 與 <code>REJECT_REASONS</code> frozenset
+              — 只服務 <code>FitResult</code></li>
+          <li><code>Config._reserved</code> 欄位 — 自己的註解就寫「left empty on purpose」</li>
+          <li><code>field</code> from <code>dataclasses</code> — 隨 <code>_reserved</code> 一併移除</li>
+          <li><code>Callable</code>, <code>Sequence</code> from <code>collections.abc</code> — 沒被 type-annotate 使用</li>
+          <li><code>Tuple, List, Optional</code> from <code>typing</code>（tracker section）— 改用內建小寫泛型</li>
+        </ul>
+
+        <p>結果：檔案 1447 → 約 1404 行；<code>RenderInputs</code> 簽章變短，<code>render()</code> path 不再
+        需要為了型別檢查而注入一個全是 <code>None</code> 的假物件。</p>
+      </div>
+    </section>
+
+    <!-- =============== fix #7 anonymous =============== -->
+    <section id="fix7">
+      <h2>附帶修正 · 拿掉 <code>anonymous=True</code></h2>
+      <p class="section-sub">YAML namespace 對齊的前置條件。三個節點都是 singleton 角色，本來就不該 anonymous。</p>
+
+      <div class="card">
+        <div class="card-head">
+          <h3>lane_detect_v2.py · turn_detect.py · lane_controller_fuzzy.py</h3>
+          <span class="tag warn">behavioural</span>
+        </div>
+<pre class="diff"><span class="del">rospy.init_node('lane_detect_node', anonymous=True)</span>
+<span class="add">rospy.init_node('lane_detect_node')</span></pre>
+        <p>三個節點都做同樣的修改。<code>anonymous=True</code> 會在名稱後加上 PID/timestamp 字尾
+        （變成 <code>/lane_detect_node_12345_1700000000000</code>），
+        導致 yaml 載到 <code>/lane_detect_node/*</code> 的私有參數無法被
+        <code>rospy.get_param('~xxx')</code> 解析到。三個節點都是單例，把 anonymous 拿掉即可。</p>
+      </div>
+    </section>
+
+    <!-- =============== verify =============== -->
+    <section id="verify">
+      <h2>本地驗證</h2>
+      <p class="section-sub">完成的檢查項目。</p>
+
+      <div class="table-wrap">
+      <table>
+        <thead><tr><th>檢查項目</th><th>結果</th></tr></thead>
+        <tbody>
+          <tr><td><code>python3 -m py_compile lane_detect_v2.py</code></td><td><span class="tag ok">OK</span></td></tr>
+          <tr><td><code>python3 -m py_compile turn_detect.py</code></td><td><span class="tag ok">OK</span></td></tr>
+          <tr><td><code>python3 -m py_compile lane_controller_fuzzy.py</code></td><td><span class="tag ok">OK</span></td></tr>
+          <tr><td>YAML 結構與節點 namespace 對齊（手動 review）</td><td><span class="tag ok">OK</span></td></tr>
+          <tr><td>Launch 仍宣告與 <code>dual_camera</code> 相關的 args</td><td><span class="tag ok">OK</span></td></tr>
+        </tbody>
+      </table>
+      </div>
+    </section>
+
+    <!-- =============== followup =============== -->
+    <section id="followup">
+      <h2>尚待測試 / 後續工作</h2>
+      <p class="section-sub">建議下次上機時優先驗證的項目。</p>
+
+      <div class="card">
+        <h4>實機測試</h4>
+        <ul class="tight">
+          <li><strong>Watchdog 啟動順序：</strong>確認 <code>lane_controller_fuzzy</code> 比 <code>lane_detect</code> 先起來時不會
+              立刻送 zero Twist（<code>last_lane_time == 0</code> 應該 short-circuit）</li>
+          <li><strong>Hard turn 期間：</strong>檢查 <code>hard_turn_end_time</code> 路徑，watchdog 不會插嘴</li>
+          <li><strong>Scan timeout：</strong>用手遮鏡頭模擬掃描超過 4 秒，確認車會繼續循線而非僵在原地</li>
+          <li><strong>YAML 載入：</strong><code>rosparam get /lane_detect_node/strict_roi</code> 應印出 <code>True</code></li>
+          <li><strong>turn_detect 參數：</strong><code>rostopic echo /turn_detect</code> 配合
+              改變 yaml 中的 <code>min_area</code> 確認確實有生效</li>
+        </ul>
+
+        <h4>需要更新文件</h4>
+        <ul class="tight">
+          <li>CLAUDE.md 不需要動 — 它原本就描述「config/lane_follower.yaml 是唯一需要修改的設定檔」，現在終於名副其實</li>
+          <li>下次新增 changelog 時，新檔放在 <code>change/&lt;YYYY-MM-DD&gt;_&lt;slug&gt;.html</code> 並參考此檔的樣式</li>
+        </ul>
+
+        <h4>未處理（review 提到但本次未做）</h4>
+        <ul class="tight">
+          <li><code>lane_detect_v2.py</code> 的雙模式 capture（直接讀 <code>/dev/videoX</code> vs 訂閱 topic）尚未拆分</li>
+          <li><code>hard_turn_count</code> 仍然只增不減 — 三圈以上的場地需要重置機制（建議走 service 介面）</li>
+          <li><code>_enforce_left_right_order</code> 在雙側都沒記憶時的決勝邏輯尚未改善</li>
+          <li>1404 行的單一檔案結構 — 拆回 package 模組是更大的重構，需另案處理</li>
+        </ul>
+      </div>
+    </section>
+
+    <footer>
+      change log generated 2026-05-27 · style after <code>launch/launch.html</code>
+    </footer>
+
+  </main>
+
+</div>
+
+</body>
+</html>

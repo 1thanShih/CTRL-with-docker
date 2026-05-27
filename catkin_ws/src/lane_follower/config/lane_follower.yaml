@@ -1,0 +1,82 @@
+# =============================================================================
+# lane_follower — 系統總配置檔
+#
+# 這份 YAML 是 CLAUDE.md 所描述的「唯一需要修改的設定檔」。所有可調的演算法
+# 參數都放在這裡，launch 在啟動時用 <rosparam command="load"/> 一次性掛到全域
+# 參數伺服器；YAML 的頂層 key 對應 ROS 節點名稱，所以節點透過 `~xxx` 就能
+# 讀到自己的私有 namespace 下的值。
+#
+# 節點名稱與 launch 對應：
+#   lane_detect_node            — lane_detect_v2.py
+#   turn_detect_node            — turn_detect.py
+#   lane_controller_fuzzy       — lane_controller_fuzzy.py
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# lane_detect_v2.py
+# -----------------------------------------------------------------------------
+lane_detect_node:
+  pub_topic: "lane_detect"
+  debug_topic: "lane_detect/image_out"
+  binary_topic: "lane_detect/image_binary"
+  show_window: false
+
+  # 演算法參數 (與 Config dataclass 中可被覆寫的 6 個 runtime knobs 對應)
+  strict_roi: true
+  min_contour_area: 500.0
+  anchor_ratio: 0.8
+  lane_width_history_len: 30
+  enable_yaw_b: true
+  max_predict_frames: 15
+
+# -----------------------------------------------------------------------------
+# turn_detect.py
+# -----------------------------------------------------------------------------
+turn_detect_node:
+  debug_topic: "turn_detect/image_out"
+  show_window: false
+
+  # 前處理
+  blur_kernel: 5
+  threshold_method: "otsu"     # "otsu" 或 "adaptive"
+  invert_binary: true
+
+  # 三角形篩選
+  min_area: 1000.0
+  aspect_ratio_min: 0.5
+  aspect_ratio_max: 2.0
+  area_ratio_min: 0.4
+  poly_epsilon_ratio: 0.02
+
+  # Tracker 穩定性
+  confirm_frames: 10
+  lost_frames: 5
+  same_object_dist_ratio: 0.2
+
+# -----------------------------------------------------------------------------
+# lane_controller_fuzzy.py
+# -----------------------------------------------------------------------------
+lane_controller_fuzzy:
+  base_speed: 0.5
+  max_angular: 1.4
+
+  # 大轉彎參數 — 第 1 次
+  turn_pixel_threshold_1: 20000.0
+  hard_turn_angular_1: 1.8
+  hard_turn_duration_1: 0.9
+
+  # 大轉彎參數 — 第 2 次以後
+  turn_pixel_threshold_2: 20000.0
+  hard_turn_angular_2: 1.8
+  hard_turn_duration_2: 1.2
+
+  # 路標靠近 / 對齊
+  hard_turn_cooldown: 1.0
+  sign_detect_pixel_threshold: 13000.0
+  sign_offset_threshold: 50.0
+  sign_align_angular: 0.2
+  scan_angular_z: 0.5
+
+  # 安全 / robustness (review 新增)
+  lane_data_timeout: 0.3      # 看門狗：lane_detect 斷訊多久後送 zero Twist
+  max_scan_duration: 4.0      # 尋標掃描最長時間，逾時退回一般循線

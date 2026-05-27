@@ -1,9 +1,10 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
 import rospy
 from geometry_msgs.msg import Twist
 import sys
+import threading
 
 try:
     from lane_follower.msg import LaneData, TurnDetect
@@ -70,7 +71,8 @@ class FuzzyLogicController:
 
 class LaneControllerFuzzy:
     def __init__(self):
-        rospy.init_node('lane_controller_fuzzy', anonymous=True)
+        # 固定節點名，原因同 lane_detect_v2.py — yaml 私有參數需要對齊節點 namespace。
+        rospy.init_node('lane_controller_fuzzy')
         
         # Read parameters
         self.base_speed = rospy.get_param('~base_speed', 0.5)
@@ -88,12 +90,18 @@ class LaneControllerFuzzy:
         
         # Cooldown after a hard turn to ignore signs and resume lane following
         self.hard_turn_cooldown = rospy.get_param('~hard_turn_cooldown', 2.0)
-        
+
         # Sign alignment parameters
         self.sign_detect_pixel_threshold = rospy.get_param('~sign_detect_pixel_threshold', 5000.0)
         self.sign_offset_threshold = rospy.get_param('~sign_offset_threshold', 50.0)
         self.sign_align_angular = rospy.get_param('~sign_align_angular', 0.5)
         self.scan_angular_z = rospy.get_param('~scan_angular_z', 0.5)
+
+        # Safety / robustness
+        # 看門狗：lane_detect 連續多久沒訊息就送 zero Twist (秒)
+        self.lane_data_timeout = rospy.get_param('~lane_data_timeout', 0.3)
+        # 掃描尋標的最大持續時間 (秒)，逾時就回到一般循線避免原地空轉
+        self.max_scan_duration = rospy.get_param('~max_scan_duration', 4.0)
         
         # Turn state
         self.hard_turn_count = 0  # 紀錄大轉彎次數
@@ -107,17 +115,25 @@ class LaneControllerFuzzy:
         self.align_angular_z = 0.0
         self.is_scanning = False
         self.scan_start_time = 0.0
-        
+
+        # Watchdog state — 預設為 0 代表「尚未收到任何 lane_detect」，
+        # watchdog 在收到第一筆之前不會送出 zero Twist。
+        self.last_lane_time = 0.0
+        self.state_lock = threading.Lock()
+
         # Initialize Fuzzy Controller
         self.fuzzy_controller = FuzzyLogicController()
-        
+
         # Publisher
         self.cmd_pub = rospy.Publisher('arduino_vel', Twist, queue_size=10)
-        
+
         # Subscriber: Subscribe to the custom message containing offset and angle
         self.lane_sub = rospy.Subscriber('lane_detect', LaneData, self.lane_callback)
         self.turn_sub = rospy.Subscriber('turn_detect', TurnDetect, self.turn_callback)
-        
+
+        # Watchdog timer — 10 Hz 檢查 lane_detect 是否斷訊
+        self.watchdog_timer = rospy.Timer(rospy.Duration(0.1), self._watchdog_cb)
+
         # 註冊關閉時的回調函數，讓車子可以安全煞停
         rospy.on_shutdown(self.shutdown_hook)
         
@@ -193,8 +209,26 @@ class LaneControllerFuzzy:
             return self.scan_angular_z
         return -self.scan_angular_z
 
+    def _watchdog_cb(self, _event):
+        # 若 lane_detect 還沒送過任何訊息，watchdog 不主動踩煞車（等啟動）
+        if self.last_lane_time <= 0.0:
+            return
+        # 大轉彎進行中由 lane_callback 的計時邏輯掌控，不要被 watchdog 打斷
+        now = rospy.Time.now().to_sec()
+        if now < self.hard_turn_end_time:
+            return
+        if (now - self.last_lane_time) > self.lane_data_timeout:
+            rospy.logwarn_throttle(
+                1.0,
+                "lane_detect stale for %.2fs > %.2fs, publishing zero Twist",
+                now - self.last_lane_time, self.lane_data_timeout,
+            )
+            self._publish(0.0, 0.0)
+
     def lane_callback(self, msg):
         now = rospy.Time.now().to_sec()
+        with self.state_lock:
+            self.last_lane_time = now
 
         # 第一優先級：大轉彎進行中
         if now < self.hard_turn_end_time:
@@ -211,8 +245,17 @@ class LaneControllerFuzzy:
 
         # 第二優先級：尋標掃描 (停止前進、左右擺動找路標)
         if self.is_scanning:
-            self._publish(0.0, self._scan_angular(now))
-            return
+            # 超過最大掃描時間仍找不到路標：放棄掃描回到一般循線，
+            # 避免在路標被遮擋或視野外時無限原地空轉。
+            if (now - self.scan_start_time) > self.max_scan_duration:
+                rospy.logwarn(
+                    "Scan timeout %.2fs exceeded, resuming lane following",
+                    self.max_scan_duration,
+                )
+                self.is_scanning = False
+            else:
+                self._publish(0.0, self._scan_angular(now))
+                return
 
         # 第三優先級：靠近路標 → 慢速並依 offset 對齊
         if self.approaching_sign:

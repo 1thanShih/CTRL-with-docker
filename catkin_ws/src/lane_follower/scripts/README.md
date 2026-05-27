@@ -30,7 +30,7 @@ Camera(s)
 
 ```bash
 cd /root/catkin_ws
-catkin_make && source devel/setup.bash
+catkin_make && source devel/setup.zsh
 
 # 單相機模式（預設）
 roslaunch lane_follower lane_detect_bringup.launch

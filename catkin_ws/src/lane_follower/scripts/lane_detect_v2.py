@@ -7,9 +7,8 @@ Publishes to lane_follower/LaneData
 """
 
 from __future__ import annotations
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from collections import deque
-from collections.abc import Callable, Sequence
 from typing import Any, Final, Protocol
 import math
 import time
@@ -69,16 +68,6 @@ OBSERVATION_SOURCES: Final[frozenset[str]] = frozenset(
     {SOURCE_DETECTED, SOURCE_MEMORY, SOURCE_MISSING}
 )
 
-# --- FitResult.*_reject_reason -----------------------------------------------
-REJECT_NO_POINTS: Final[str] = "no_points"
-REJECT_Y_SPAN_TOO_SMALL: Final[str] = "y_span_too_small"
-REJECT_CURVATURE_TOO_LARGE: Final[str] = "curvature_too_large"
-
-REJECT_REASONS: Final[frozenset[str]] = frozenset(
-    {REJECT_NO_POINTS, REJECT_Y_SPAN_TOO_SMALL, REJECT_CURVATURE_TOO_LARGE}
-)
-
-
 @dataclass(frozen=True)
 class FrameContext:
     """A single captured frame with monotonic identity."""
@@ -121,30 +110,6 @@ class LaneObservation:
 
 
 @dataclass(frozen=True)
-class FitResult:
-    """Quadratic fit per side, plus optional lane-marking boundary polys for fill drawing.
-
-    ``*_poly`` is the centerline fit used by measure. ``*_poly_lo`` / ``*_poly_hi`` describe
-    the inner and outer edges of the lane marking, derived by per-y-bin min_x / max_x —
-    visualize uses them to fill a closed lane-region polygon. They are always None together
-    and always None when the side is invalid.
-    """
-
-    left_poly: np.ndarray | None
-    right_poly: np.ndarray | None
-    left_valid: bool
-    right_valid: bool
-    left_y_span: tuple[int, int] | None
-    right_y_span: tuple[int, int] | None
-    left_reject_reason: str | None
-    right_reject_reason: str | None
-    left_poly_lo: np.ndarray | None
-    left_poly_hi: np.ndarray | None
-    right_poly_lo: np.ndarray | None
-    right_poly_hi: np.ndarray | None
-
-
-@dataclass(frozen=True)
 class MeasureResult:
     """Per-frame offset/yaw measurement at the car anchor point."""
 
@@ -175,7 +140,6 @@ class RenderInputs:
     frame: FrameContext
     preprocess: PreprocessResult
     observation: LaneObservation
-    fit: FitResult
     measure: MeasureResult
     smooth: SmoothResult
     fps: float
@@ -319,20 +283,7 @@ class Config:
     FONT_SCALE: float = 0.6
     LANE_FILL_ALPHA: float = 0.45  # Blend factor for filled lane regions
 
-    # Internal — used only by tests / future hooks; populated nowhere yet.
-    # Reserved for future extensions; left empty on purpose.
-    _reserved: tuple[str, ...] = field(default_factory=tuple)
-
-    # -------------------------------------------------------
-    # NEW FEATURE: yaw calculation mode selection
-    # -------------------------------------------------------
-    # When False (default) the system uses the lightweight
-    # contour‑averaging method (scheme A) and reports yaw = 0.0.
-    # When True the pipeline falls back to scheme B which fits a
-    # line (or quadratic curve) to each side and computes yaw from the
-    # slope.  This is more computationally expensive but provides a true
-    # heading angle.  Users can enable it via `--enable-yaw-b` CLI flag or
-    # by overriding the config in code: `Config(ENABLE_YAW_B=True)`.
+    # Yaw 模式：True 走 scheme B（二次多項式擬合 + 微分），False 走 scheme A（cv2.fitLine 直線）。
     ENABLE_YAW_B: bool = True
 
 
@@ -353,14 +304,24 @@ use ``THRESH_BINARY_INV`` — lane pixels end up as 255 in the binary mask.
 
 
 
+# ROI mask cache keyed on (height, width, ratios) — the polygon never changes
+# at runtime, so we only rasterize it once per frame size.
+_ROI_MASK_CACHE: dict[tuple[int, int, tuple[tuple[float, float], ...]], np.ndarray] = {}
+
+
 def _build_roi_mask(height: int, width: int, cfg: Config) -> np.ndarray:
-    """Rasterize the ROI polygon from ratio-coordinates into a uint8 mask."""
+    """Return a cached ROI mask (uint8, 255 inside polygon, 0 outside)."""
+    key = (height, width, cfg.ROI_POLYGON_RATIOS)
+    cached = _ROI_MASK_CACHE.get(key)
+    if cached is not None:
+        return cached
     mask = np.zeros((height, width), dtype=np.uint8)
     poly = np.array(
         [(int(rx * width), int(ry * height)) for rx, ry in cfg.ROI_POLYGON_RATIOS],
         dtype=np.int32,
     )
     cv2.fillPoly(mask, [poly], 255)
+    _ROI_MASK_CACHE[key] = mask
     return mask
 
 
@@ -584,9 +545,8 @@ slightly looser metric but adequate at the default 0.15 threshold.
 
 
 
-from typing import Tuple, List, Optional
 # Internal helper type: (points_Nx2, bbox(x_min, y_min, x_max, y_max), centroid_x)
-_Cand = Tuple[np.ndarray, Tuple[int, int, int, int], float]
+_Cand = tuple[np.ndarray, tuple[int, int, int, int], float]
 
 
 def _contour_to_points(contour: np.ndarray) -> np.ndarray:
@@ -861,18 +821,15 @@ def measure_at_anchor(
     car_x, anchor_y = _anchor_xy(cfg, frame_width, frame_height)
 
     def avg_x_in_band(points: np.ndarray | None, band_half: int = 15) -> float | None:
+        # 改為 vectorized 篩選 — 不再 rasterize H×W mask
         if points is None or len(points) == 0:
             return None
-        mask = np.zeros((frame_height, frame_width), dtype=np.uint8)
-        cnt = points.reshape(-1, 1, 2)
-        cv2.fillPoly(mask, [cnt], 255)
-        y0 = max(0, anchor_y - band_half)
-        y1 = min(frame_height, anchor_y + band_half + 1)
-        band = mask[y0:y1, :]
-        _, xs = np.where(band > 0)
-        if len(xs) == 0:
+        pts = points.reshape(-1, 2)
+        ys = pts[:, 1]
+        band_mask = (ys >= anchor_y - band_half) & (ys <= anchor_y + band_half)
+        if not band_mask.any():
             return None
-        return float(np.mean(xs))
+        return float(pts[band_mask, 0].mean())
 
     left_x = avg_x_in_band(obs.left_points)
     right_x = avg_x_in_band(obs.right_points)
@@ -1279,7 +1236,9 @@ def render(inputs: RenderInputs, cfg: Config) -> np.ndarray:
 
 class LaneDetectNode:
     def __init__(self):
-        rospy.init_node('lane_detect_node', anonymous=True)
+        # 必須是固定節點名 — 私有參數 (~xxx) 透過 /lane_detect_node/* 從 yaml 讀入，
+        # anonymous=True 會在名稱後加隨機字尾導致參數對不上。
+        rospy.init_node('lane_detect_node')
         
         # Load ROS Params
         self.image_topic = rospy.get_param('~image_topic', '/dev/video0')
@@ -1384,12 +1343,10 @@ class LaneDetectNode:
                 rospy.logerr(f"CvBridge Error (binary image): {e}")
 
         if self.debug_pub.get_num_connections() > 0 or self.show_window:
-            fit_mock = FitResult(None, None, False, False, None, None, None, None, None, None, None, None)
             ri = RenderInputs(
                 frame=frame,
                 preprocess=pre,
                 observation=obs,
-                fit=fit_mock,
                 measure=meas,
                 smooth=smoothed,
                 fps=self.fps_smoothed

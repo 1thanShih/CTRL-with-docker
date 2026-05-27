@@ -25,22 +25,43 @@ except ImportError:
         offset = 0.0
 
 # ==========================================
-# Configuration / Settings (從原 config.py 整合)
+# Defaults — 所有 runtime 可調的值都從 ROS param 讀，
+# 這裡的常數只在 launch 沒設定時當 fallback。
 # ==========================================
-BLUR_KERNEL_SIZE = (5, 5)
-THRESHOLD_METHOD = 'otsu' 
-INVERT_BINARY = True 
+DEFAULT_BLUR_KERNEL = 5
+DEFAULT_THRESHOLD_METHOD = 'otsu'
+DEFAULT_INVERT_BINARY = True
 
-MIN_AREA = 1000.0  
-ASPECT_RATIO_MIN = 0.5
-ASPECT_RATIO_MAX = 2.0
-AREA_RATIO_MIN = 0.4
-POLY_EPSILON_RATIO = 0.02
+DEFAULT_MIN_AREA = 1000.0
+DEFAULT_ASPECT_RATIO_MIN = 0.5
+DEFAULT_ASPECT_RATIO_MAX = 2.0
+DEFAULT_AREA_RATIO_MIN = 0.4
+DEFAULT_POLY_EPSILON_RATIO = 0.02
 
-CONFIRM_FRAMES = 10
-LOST_FRAMES = 5
-SAME_OBJECT_DIST_RATIO = 0.2
-SHOW_WINDOW = True
+DEFAULT_CONFIRM_FRAMES = 10
+DEFAULT_LOST_FRAMES = 5
+DEFAULT_SAME_OBJECT_DIST_RATIO = 0.2
+DEFAULT_SHOW_WINDOW = False  # ROS node 預設不開窗，需要時 launch 覆寫
+
+# ==========================================
+# Runtime parameter container — 由 TurnDetectNode 在啟動時填入。
+# 純函式 (preprocess / find_triangle / Tracker) 透過此物件取參數，
+# 避免依賴全域 mutable state。
+# ==========================================
+@dataclass
+class TurnParams:
+    blur_kernel: int = DEFAULT_BLUR_KERNEL
+    threshold_method: str = DEFAULT_THRESHOLD_METHOD
+    invert_binary: bool = DEFAULT_INVERT_BINARY
+    min_area: float = DEFAULT_MIN_AREA
+    aspect_ratio_min: float = DEFAULT_ASPECT_RATIO_MIN
+    aspect_ratio_max: float = DEFAULT_ASPECT_RATIO_MAX
+    area_ratio_min: float = DEFAULT_AREA_RATIO_MIN
+    poly_epsilon_ratio: float = DEFAULT_POLY_EPSILON_RATIO
+    confirm_frames: int = DEFAULT_CONFIRM_FRAMES
+    lost_frames: int = DEFAULT_LOST_FRAMES
+    same_object_dist_ratio: float = DEFAULT_SAME_OBJECT_DIST_RATIO
+
 
 # ==========================================
 # Data Structures
@@ -62,7 +83,8 @@ class State:
 # Algorithm Classes and Functions
 # ==========================================
 class Tracker:
-    def __init__(self):
+    def __init__(self, params: TurnParams):
+        self.params = params
         self.state = State.NOT_DETECTED
         self.consecutive_detects = 0
         self.consecutive_lost = 0
@@ -74,13 +96,13 @@ class Tracker:
         lx, ly = self.last_triangle.center
         cx, cy = triangle.center
         dist = math.hypot(cx - lx, cy - ly)
-        max_dist = SAME_OBJECT_DIST_RATIO * self.last_triangle.bbox[2]
+        max_dist = self.params.same_object_dist_ratio * self.last_triangle.bbox[2]
         return dist < max_dist and triangle.direction == self.last_triangle.direction
 
     def update(self, triangle: Optional[Triangle]) -> str:
         if triangle is None:
             self.consecutive_lost += 1
-            if self.consecutive_lost >= LOST_FRAMES:
+            if self.consecutive_lost >= self.params.lost_frames:
                 self.state = State.NOT_DETECTED
                 self.consecutive_detects = 0
                 self.last_triangle = None
@@ -94,24 +116,25 @@ class Tracker:
         self.consecutive_lost = 0
         self.last_triangle = triangle
 
-        if self.consecutive_detects >= CONFIRM_FRAMES:
+        if self.consecutive_detects >= self.params.confirm_frames:
             self.state = State.DETECTED
         return self.state
 
-def preprocess(frame: np.ndarray) -> np.ndarray:
+def preprocess(frame: np.ndarray, params: TurnParams) -> np.ndarray:
     gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-    blur = cv2.GaussianBlur(gray, BLUR_KERNEL_SIZE, 0)
-    
-    if THRESHOLD_METHOD == 'otsu':
+    k = params.blur_kernel | 1  # 強制奇數
+    blur = cv2.GaussianBlur(gray, (k, k), 0)
+
+    if params.threshold_method == 'otsu':
         _, binary = cv2.threshold(blur, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
     else:
         binary = cv2.adaptiveThreshold(
             blur, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 11, 2
         )
-        
-    if INVERT_BINARY:
+
+    if params.invert_binary:
         binary = cv2.bitwise_not(binary)
-        
+
     return binary
 
 def _find_apex(pts: list) -> Tuple[int, int]:
@@ -130,16 +153,16 @@ def _find_apex(pts: list) -> Tuple[int, int]:
     return tuple(pts[best_idx])
 
 
-def _passes_shape_filters(area: float, w: int, h: int) -> bool:
+def _passes_shape_filters(area: float, w: int, h: int, params: TurnParams) -> bool:
     if h == 0:
         return False
     aspect_ratio = float(w) / h
-    if not (ASPECT_RATIO_MIN <= aspect_ratio <= ASPECT_RATIO_MAX):
+    if not (params.aspect_ratio_min <= aspect_ratio <= params.aspect_ratio_max):
         return False
-    return (area / (w * h)) >= AREA_RATIO_MIN
+    return (area / (w * h)) >= params.area_ratio_min
 
 
-def find_triangle(binary: np.ndarray) -> Optional[Triangle]:
+def find_triangle(binary: np.ndarray, params: TurnParams) -> Optional[Triangle]:
     contours, _ = cv2.findContours(binary, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
     best_triangle = None
@@ -147,15 +170,15 @@ def find_triangle(binary: np.ndarray) -> Optional[Triangle]:
 
     for cnt in contours:
         area = cv2.contourArea(cnt)
-        if area < MIN_AREA or area <= max_area:
+        if area < params.min_area or area <= max_area:
             continue
 
         x, y, w, h = cv2.boundingRect(cnt)
-        if not _passes_shape_filters(area, w, h):
+        if not _passes_shape_filters(area, w, h, params):
             continue
 
         peri = cv2.arcLength(cnt, True)
-        approx = cv2.approxPolyDP(cnt, POLY_EPSILON_RATIO * peri, True)
+        approx = cv2.approxPolyDP(cnt, params.poly_epsilon_ratio * peri, True)
         if len(approx) != 3:
             continue
 
@@ -205,26 +228,51 @@ def draw_overlay(frame: np.ndarray, triangle: Optional[Triangle], state: str, fp
 # ==========================================
 class TurnDetectNode:
     def __init__(self):
-        rospy.init_node('turn_detect_node', anonymous=True)
+        # 固定節點名，原因同 lane_detect_v2.py — yaml 私有參數需要對齊節點 namespace。
+        rospy.init_node('turn_detect_node')
         self.bridge = CvBridge()
-        
-        # 讀取 ROS 參數配置
-        self.image_topic = rospy.get_param('~image_topic', '/usb_cam/image_raw')
+
+        # 讀取 ROS 參數配置 — topic / 顯示
+        self.image_topic = rospy.get_param('~image_topic', '/camera/image_raw')
         self.debug_topic = rospy.get_param('~debug_topic', 'turn_detect/image_out')
-        self.show_window = rospy.get_param('~show_window', SHOW_WINDOW)
-        
+        self.show_window = rospy.get_param('~show_window', DEFAULT_SHOW_WINDOW)
+
+        # 演算法參數 — 全部從 rosparam 讀取，允許 launch / yaml 覆寫
+        self.params = TurnParams(
+            blur_kernel=int(rospy.get_param('~blur_kernel', DEFAULT_BLUR_KERNEL)),
+            threshold_method=str(rospy.get_param('~threshold_method', DEFAULT_THRESHOLD_METHOD)),
+            invert_binary=bool(rospy.get_param('~invert_binary', DEFAULT_INVERT_BINARY)),
+            min_area=float(rospy.get_param('~min_area', DEFAULT_MIN_AREA)),
+            aspect_ratio_min=float(rospy.get_param('~aspect_ratio_min', DEFAULT_ASPECT_RATIO_MIN)),
+            aspect_ratio_max=float(rospy.get_param('~aspect_ratio_max', DEFAULT_ASPECT_RATIO_MAX)),
+            area_ratio_min=float(rospy.get_param('~area_ratio_min', DEFAULT_AREA_RATIO_MIN)),
+            poly_epsilon_ratio=float(rospy.get_param('~poly_epsilon_ratio', DEFAULT_POLY_EPSILON_RATIO)),
+            confirm_frames=int(rospy.get_param('~confirm_frames', DEFAULT_CONFIRM_FRAMES)),
+            lost_frames=int(rospy.get_param('~lost_frames', DEFAULT_LOST_FRAMES)),
+            same_object_dist_ratio=float(rospy.get_param('~same_object_dist_ratio', DEFAULT_SAME_OBJECT_DIST_RATIO)),
+        )
+
         # 建立 Publisher 與 Subscriber
         self.pub = rospy.Publisher('turn_detect', TurnDetect, queue_size=10)
         self.debug_pub = rospy.Publisher(self.debug_topic, Image, queue_size=1)
         self.sub = rospy.Subscriber(self.image_topic, Image, self.image_callback, queue_size=1, buff_size=2**24)
-        
-        self.tracker = Tracker()
-        
+
+        self.tracker = Tracker(self.params)
+
         self.tick_freq = cv2.getTickFrequency()
         self.prev_tick = cv2.getTickCount()
-        
-        rospy.loginfo(f"Turn Detect Node Started.")
-        rospy.loginfo(f"Subscribed to topic: {self.image_topic}")
+
+        rospy.on_shutdown(self._on_shutdown)
+
+        rospy.loginfo("Turn Detect Node Started.")
+        rospy.loginfo("Subscribed to topic: %s", self.image_topic)
+
+    def _on_shutdown(self):
+        if self.show_window:
+            try:
+                cv2.destroyAllWindows()
+            except Exception:
+                pass
 
     def image_callback(self, msg):
         try:
@@ -238,8 +286,8 @@ class TurnDetectNode:
         fps = self.tick_freq / (curr_tick - self.prev_tick) if (curr_tick - self.prev_tick) > 0 else 0.0
         self.prev_tick = curr_tick
             
-        binary = preprocess(frame)
-        triangle = find_triangle(binary)
+        binary = preprocess(frame, self.params)
+        triangle = find_triangle(binary, self.params)
         state = self.tracker.update(triangle)
         
         # 如果狀態為 DETECTED，發布結果至 ROS topic
@@ -267,8 +315,6 @@ class TurnDetectNode:
 
     def run(self):
         rospy.spin()
-        if self.show_window:
-            cv2.destroyAllWindows()
 
 if __name__ == "__main__":
     try:
