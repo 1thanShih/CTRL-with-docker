@@ -10,12 +10,23 @@ from cv_bridge import CvBridge
 class Camera:
   def __init__(self):
     rospy.init_node('camera')
-    
+
     self.camera_id = rospy.get_param('~camera_id', '/dev/video0')
+    width  = int(rospy.get_param('~width',  640))
+    height = int(rospy.get_param('~height', 480))
+    fps    = int(rospy.get_param('~fps',    30))
+
     self.cap = cv2.VideoCapture(self.camera_id)
+    self.cap.set(cv2.CAP_PROP_FRAME_WIDTH,  width)
+    self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, height)
+    self.cap.set(cv2.CAP_PROP_FPS,          fps)
 
     if self.cap.isOpened():
-      rospy.loginfo('Camera connected: %s', self.camera_id)
+      actual_w = int(self.cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+      actual_h = int(self.cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+      actual_f = self.cap.get(cv2.CAP_PROP_FPS)
+      rospy.loginfo('Camera connected: %s (%dx%d @ %.1f fps requested %dx%d @ %d)',
+                    self.camera_id, actual_w, actual_h, actual_f, width, height, fps)
     else :
       rospy.logwarn('Camera not connected: %s', self.camera_id)
 
@@ -23,9 +34,9 @@ class Camera:
     self.image_pub = rospy.Publisher('/camera/image_raw', Image, queue_size=1)
     # Existing web publish
     self.web_pub = rospy.Publisher('/golfbot/camera_web', String, queue_size=1)
-    
+
     self.bridge = CvBridge()
-    self.rate = rospy.Rate(30)
+    self.rate = rospy.Rate(fps)
 
   def talker(self):
     while not rospy.is_shutdown():

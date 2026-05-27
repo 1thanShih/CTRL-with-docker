@@ -899,87 +899,48 @@ def measure_at_anchor(
                 return 0.0
             return math.degrees(math.atan(vx / vy))
 
-    left_yaw = calc_yaw(obs.left_points)
-    right_yaw = calc_yaw(obs.right_points)
+    yaws = [y for y in (calc_yaw(obs.left_points), calc_yaw(obs.right_points)) if y is not None]
+    yaw_deg = sum(yaws) / len(yaws) if yaws else 0.0
 
-    if left_yaw is not None and right_yaw is not None:
-        yaw_deg = 0.5 * (left_yaw + right_yaw)
-    elif left_yaw is not None:
-        yaw_deg = left_yaw
-    elif right_yaw is not None:
-        yaw_deg = right_yaw
-    else:
-        yaw_deg = 0.0
-
-    if left_x is not None and right_x is not None:
-        lane_width_raw = right_x - left_x
-        center_x = 0.5 * (left_x + right_x)
-        offset = float(car_x) - center_x
-        return MeasureResult(
-            offset_px=offset,
-            yaw_deg=yaw_deg,
-            status=STATUS_OK,
-            lane_width_used=None,
-            lane_width_raw=lane_width_raw,
-            anchor_y=anchor_y,
-            car_x=car_x,
-        )
-
-    width = _mean_width(lane_width_history)
-
-    if left_x is not None and right_x is None:
-        if width is None:
-            return MeasureResult(
-                offset_px=None,
-                yaw_deg=None,
-                status=STATUS_NONE,
-                lane_width_used=None,
-                lane_width_raw=None,
-                anchor_y=anchor_y,
-                car_x=car_x,
-            )
-        est_right = left_x + width
-        center_x = 0.5 * (left_x + est_right)
-        offset = float(car_x) - center_x
-        return MeasureResult(
-            offset_px=offset,
-            yaw_deg=yaw_deg,
-            status=STATUS_LEFT_ONLY_ESTIMATED,
-            lane_width_used=width,
-            lane_width_raw=None,
-            anchor_y=anchor_y,
-            car_x=car_x,
-        )
-
-    if right_x is not None and left_x is None:
-        if width is None:
-            return MeasureResult(
-                offset_px=None,
-                yaw_deg=None,
-                status=STATUS_NONE,
-                lane_width_used=None,
-                lane_width_raw=None,
-                anchor_y=anchor_y,
-                car_x=car_x,
-            )
-        est_left = right_x - width
-        center_x = 0.5 * (est_left + right_x)
-        offset = float(car_x) - center_x
-        return MeasureResult(
-            offset_px=offset,
-            yaw_deg=yaw_deg,
-            status=STATUS_RIGHT_ONLY_ESTIMATED,
-            lane_width_used=width,
-            lane_width_raw=None,
-            anchor_y=anchor_y,
-            car_x=car_x,
-        )
-
-    return MeasureResult(
+    none_result = MeasureResult(
         offset_px=None,
         yaw_deg=None,
         status=STATUS_NONE,
         lane_width_used=None,
+        lane_width_raw=None,
+        anchor_y=anchor_y,
+        car_x=car_x,
+    )
+
+    # Both sides visible: direct centre from observed edges.
+    if left_x is not None and right_x is not None:
+        return MeasureResult(
+            offset_px=float(car_x) - 0.5 * (left_x + right_x),
+            yaw_deg=yaw_deg,
+            status=STATUS_OK,
+            lane_width_used=None,
+            lane_width_raw=right_x - left_x,
+            anchor_y=anchor_y,
+            car_x=car_x,
+        )
+
+    # Single-side: need a historical lane width to estimate the opposite edge.
+    width = _mean_width(lane_width_history)
+    if width is None or (left_x is None and right_x is None):
+        return none_result
+
+    if left_x is not None:
+        center_x = left_x + width / 2.0
+        status = STATUS_LEFT_ONLY_ESTIMATED
+    else:
+        center_x = right_x - width / 2.0
+        status = STATUS_RIGHT_ONLY_ESTIMATED
+
+    return MeasureResult(
+        offset_px=float(car_x) - center_x,
+        yaw_deg=yaw_deg,
+        status=status,
+        lane_width_used=width,
         lane_width_raw=None,
         anchor_y=anchor_y,
         car_x=car_x,

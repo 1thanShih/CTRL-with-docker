@@ -1,17 +1,38 @@
 <launch>
+
+    <!-- 雙相機切換 (false = 單相機；true = 雙相機) -->
+    <arg name="dual_camera" default="false"/>
+
+    <arg name="lane_cam_device" default="/dev/video0"/>
+    <arg name="turn_cam_device" default="/dev/video1"/>
+
     <!-- rosserial_python 節點 -->
     <node pkg="rosserial_python" type="serial_node.py" name="arduino_mega_serial_node" output="screen">
         <param name="port" value="/dev/ttyUSB0"/>
         <param name="baud" value="115200"/>
     </node>
 
-    <!-- 統一的攝影機影像發布節點 -->
-    <node pkg="camera" type="camera.py" name="camera_node" output="screen">
-        <param name="camera_id" value="/dev/video0" />
-    </node>
+    <!-- 單相機：走線與路標共用 -->
+    <group unless="$(arg dual_camera)">
+        <node pkg="camera" type="camera.py" name="camera_node" output="screen">
+            <param name="camera_id" value="$(arg lane_cam_device)" />
+        </node>
+    </group>
+
+    <!-- 雙相機：走線與路標各自一顆 -->
+    <group if="$(arg dual_camera)">
+        <node pkg="camera" type="camera.py" name="camera_node_lane" output="screen">
+            <param name="camera_id" value="$(arg lane_cam_device)" />
+            <remap from="/camera/image_raw" to="/cam_lane/image_raw"/>
+        </node>
+        <node pkg="camera" type="camera.py" name="camera_node_turn" output="screen">
+            <param name="camera_id" value="$(arg turn_cam_device)" />
+            <remap from="/camera/image_raw" to="/cam_turn/image_raw"/>
+        </node>
+    </group>
 
     <node pkg="lane_follower" type="turn_detect.py" name="turn_detect_node" output="screen">
-        <param name="image_topic" value="/camera/image_raw" />
+        <param name="image_topic" value="$(eval '/cam_turn/image_raw' if arg('dual_camera') else '/camera/image_raw')" />
         <param name="debug_topic" value="turn_detect/image_out" />
         <param name="show_window" value="false" />
     </node>
@@ -19,11 +40,11 @@
     <!-- 車道辨識節點 -->
     <node pkg="lane_follower" type="lane_detect_v2.py" name="lane_detect_node" output="screen">
         <!-- 訂閱上方統一發布出來的 ROS Topic -->
-        <param name="image_topic" value="/camera/image_raw" />
+        <param name="image_topic" value="$(eval '/cam_lane/image_raw' if arg('dual_camera') else '/camera/image_raw')" />
         <param name="pub_topic" value="lane_detect" />
         <param name="debug_topic" value="lane_detect/image_out" />
         <param name="show_window" value="false" />
-        
+
         <!-- Algorithm Configurations -->
         <param name="strict_roi" value="true" />
         <param name="min_contour_area" value="500.0" />
@@ -38,17 +59,17 @@
     <node pkg="lane_follower" type="lane_controller_fuzzy.py" name="lane_controller_fuzzy" output="screen">
         <param name="base_speed" value="0.5" />
         <param name="max_angular" value="1.6" />
-        
+
         <!-- 第一次大轉彎參數 -->
         <param name="turn_pixel_threshold_1" value="20000.0" />
-        <param name="hard_turn_angular_1" value="2.0" />        
-        <param name="hard_turn_duration_1" value="1.0" />    
-        
+        <param name="hard_turn_angular_1" value="2.0" />
+        <param name="hard_turn_duration_1" value="1.0" />
+
         <!-- 第二次大轉彎參數 -->
         <param name="turn_pixel_threshold_2" value="20000.0" />
-        <param name="hard_turn_angular_2" value="2.0" />        
-        <param name="hard_turn_duration_2" value="1.0" />    
-        
+        <param name="hard_turn_angular_2" value="2.0" />
+        <param name="hard_turn_duration_2" value="1.0" />
+
         <param name="hard_turn_cooldown" value="2.0" />
         <param name="sign_detect_pixel_threshold" value="500.0" />
         <param name="sign_offset_threshold" value="50.0" />

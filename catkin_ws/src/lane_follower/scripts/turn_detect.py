@@ -68,36 +68,34 @@ class Tracker:
         self.consecutive_lost = 0
         self.last_triangle: Optional[Triangle] = None
 
+    def _is_same_object(self, triangle: Triangle) -> bool:
+        if self.last_triangle is None:
+            return True
+        lx, ly = self.last_triangle.center
+        cx, cy = triangle.center
+        dist = math.hypot(cx - lx, cy - ly)
+        max_dist = SAME_OBJECT_DIST_RATIO * self.last_triangle.bbox[2]
+        return dist < max_dist and triangle.direction == self.last_triangle.direction
+
     def update(self, triangle: Optional[Triangle]) -> str:
-        if triangle is not None:
-            is_same = False
-            if self.last_triangle:
-                lx, ly = self.last_triangle.center
-                cx, cy = triangle.center
-                dist = math.hypot(cx - lx, cy - ly)
-                max_dist = SAME_OBJECT_DIST_RATIO * self.last_triangle.bbox[2]
-                if dist < max_dist and triangle.direction == self.last_triangle.direction:
-                    is_same = True
-            else:
-                is_same = True # 第一次偵測
-
-            if not is_same:
-                # 若不是同一物件（位置突變或方向改變），重置計數
-                self.consecutive_detects = 0
-
-            self.consecutive_detects += 1
-            self.consecutive_lost = 0
-            self.last_triangle = triangle
-
-            if self.consecutive_detects >= CONFIRM_FRAMES:
-                self.state = State.DETECTED
-        else:
+        if triangle is None:
             self.consecutive_lost += 1
             if self.consecutive_lost >= LOST_FRAMES:
                 self.state = State.NOT_DETECTED
                 self.consecutive_detects = 0
                 self.last_triangle = None
-        
+            return self.state
+
+        # 位置突變或方向改變視為新物件，重置計數
+        if not self._is_same_object(triangle):
+            self.consecutive_detects = 0
+
+        self.consecutive_detects += 1
+        self.consecutive_lost = 0
+        self.last_triangle = triangle
+
+        if self.consecutive_detects >= CONFIRM_FRAMES:
+            self.state = State.DETECTED
         return self.state
 
 def preprocess(frame: np.ndarray) -> np.ndarray:
@@ -116,69 +114,68 @@ def preprocess(frame: np.ndarray) -> np.ndarray:
         
     return binary
 
+def _find_apex(pts: list) -> Tuple[int, int]:
+    """三角形 apex：與另外兩點連線中點距離最遠的頂點。"""
+    best_idx = 0
+    best_dist = -1.0
+    for i in range(3):
+        other1 = pts[(i + 1) % 3]
+        other2 = pts[(i + 2) % 3]
+        mid_x = (other1[0] + other2[0]) / 2.0
+        mid_y = (other1[1] + other2[1]) / 2.0
+        dist = math.hypot(pts[i][0] - mid_x, pts[i][1] - mid_y)
+        if dist > best_dist:
+            best_dist = dist
+            best_idx = i
+    return tuple(pts[best_idx])
+
+
+def _passes_shape_filters(area: float, w: int, h: int) -> bool:
+    if h == 0:
+        return False
+    aspect_ratio = float(w) / h
+    if not (ASPECT_RATIO_MIN <= aspect_ratio <= ASPECT_RATIO_MAX):
+        return False
+    return (area / (w * h)) >= AREA_RATIO_MIN
+
+
 def find_triangle(binary: np.ndarray) -> Optional[Triangle]:
     contours, _ = cv2.findContours(binary, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-    
+
     best_triangle = None
-    max_area = 0
+    max_area = 0.0
 
     for cnt in contours:
         area = cv2.contourArea(cnt)
-        if area < MIN_AREA:
+        if area < MIN_AREA or area <= max_area:
             continue
-            
+
         x, y, w, h = cv2.boundingRect(cnt)
-        if h == 0: continue
-        aspect_ratio = float(w) / h
-        if not (ASPECT_RATIO_MIN <= aspect_ratio <= ASPECT_RATIO_MAX):
-            continue
-            
-        bbox_area = w * h
-        if (area / bbox_area) < AREA_RATIO_MIN:
+        if not _passes_shape_filters(area, w, h):
             continue
 
         peri = cv2.arcLength(cnt, True)
         approx = cv2.approxPolyDP(cnt, POLY_EPSILON_RATIO * peri, True)
-        
-        # 尋找三角形
-        if len(approx) == 3:
-            if area > max_area:
-                max_area = area
-                
-                # 尋找 apex (與另外兩點連線中點距離最遠的點)
-                pts = [pt[0] for pt in approx]
-                max_dist = -1
-                apex_idx = 0
-                
-                for i in range(3):
-                    pt_test = pts[i]
-                    pt_other1 = pts[(i+1)%3]
-                    pt_other2 = pts[(i+2)%3]
-                    
-                    mid_x = (pt_other1[0] + pt_other2[0]) / 2.0
-                    mid_y = (pt_other1[1] + pt_other2[1]) / 2.0
-                    
-                    dist = math.hypot(pt_test[0] - mid_x, pt_test[1] - mid_y)
-                    if dist > max_dist:
-                        max_dist = dist
-                        apex_idx = i
-                
-                apex = pts[apex_idx]
-                center_x = x + w / 2.0
-                center_y = y + h / 2.0
-                
-                # 方向判定：由 apex.x 相對於 bbox 中心 x 決定
-                direction = "right" if apex[0] > center_x else "left"
-                
-                best_triangle = Triangle(
-                    contour=cnt,
-                    area=area,
-                    bbox=(x, y, w, h),
-                    apex=tuple(apex),
-                    direction=direction,
-                    center=(int(center_x), int(center_y))
-                )
-                
+        if len(approx) != 3:
+            continue
+
+        pts = [pt[0] for pt in approx]
+        apex = _find_apex(pts)
+        center_x = x + w / 2.0
+        center_y = y + h / 2.0
+        # 方向判定：由 apex.x 相對於 bbox 中心 x 決定
+        direction = "right" if apex[0] > center_x else "left"
+
+        max_area = area
+        best_triangle = Triangle(
+            contour=cnt,
+            area=area,
+            bbox=(x, y, w, h),
+            apex=apex,
+            direction=direction,
+            center=(int(center_x), int(center_y)),
+        )
+
     return best_triangle
 
 def draw_overlay(frame: np.ndarray, triangle: Optional[Triangle], state: str, fps: float) -> np.ndarray:
