@@ -63,6 +63,12 @@ COPY scripts/*.rules /root/scripts/
 COPY scripts/entrypoint.sh /root/scripts/entrypoint.sh
 RUN chmod +x /root/scripts/entrypoint.sh
 
+# Claude Code skills — baked into a NON-shadowed path. /root/.claude is a named
+# volume at runtime, so anything COPY'd straight there would be hidden; the
+# entrypoint seeds these into /root/.claude/skills/ on container start instead.
+COPY skill/ /opt/claude-skills/
+RUN chmod +x /opt/claude-skills/*/scripts/*.sh 2>/dev/null || true
+
 # Entry point
 ENTRYPOINT ["/root/scripts/entrypoint.sh"]
 CMD ["zsh"]

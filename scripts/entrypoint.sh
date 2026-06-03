@@ -6,6 +6,24 @@ if command -v sshd >/dev/null 2>&1; then
     /usr/sbin/sshd
 fi
 
+# Seed Claude Code skills into the .claude volume. They're baked into the image
+# at /opt/claude-skills (a non-shadowed path); copy each one into the volume so
+# container claude discovers it at /root/.claude/skills/<name>. Image is the
+# source of truth — refreshed every start. Only touches the skills/ subtree,
+# never the credentials elsewhere in the volume.
+if [ -d /opt/claude-skills ]; then
+    mkdir -p /root/.claude/skills
+    seeded=""
+    for d in /opt/claude-skills/*/; do
+        [ -f "$d/SKILL.md" ] || continue
+        name=$(basename "$d")
+        rm -rf "/root/.claude/skills/$name"
+        cp -r "$d" "/root/.claude/skills/$name"
+        seeded="$seeded $name"
+    done
+    echo "[entrypoint] seeded Claude skills:${seeded:- (none)}"
+fi
+
 # Always source the base ROS env so $@ has a working environment.
 source /opt/ros/noetic/setup.zsh
 
