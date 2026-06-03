@@ -34,7 +34,8 @@ RUN apt-get update && \
 # 2. Python deps (headless OpenCV — no X libs)
 RUN pip3 install --no-cache-dir \
       opencv-python-headless \
-      scikit-fuzzy
+      scikit-fuzzy \
+      filterpy
 
 # 3a. Node.js LTS (cache 友善：與 Claude Code 拆層，升級 CLI 不會重裝 Node)
 RUN curl -fsSL https://deb.nodesource.com/setup_${NODE_MAJOR}.x | bash - && \
