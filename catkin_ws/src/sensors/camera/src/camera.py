@@ -63,7 +63,7 @@ class Camera:
       self.rate.sleep()
 
     self.cap.release()
-    cv2.destroyAllWindows()
+    # cv2.destroyAllWindows()  # Removed because cv2 in docker is headless and crashes here
     
 if __name__ == '__main__':
   camera = Camera()

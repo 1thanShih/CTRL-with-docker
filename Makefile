@@ -29,6 +29,7 @@ up:
 			--net=host \
 			--name $(CONTAINER_NAME) \
 			--ulimit nofile=1024:524288 \
+			-v /dev:/dev \
 			--mount type=bind,source=$(shell pwd)/catkin_ws,target=/root/catkin_ws \
 			--mount type=volume,source=$(CLAUDE_VOLUME),target=/root/.claude \
 			--mount type=volume,source=$(ZSH_VOLUME),target=/root/.zsh-cache \
@@ -53,6 +54,7 @@ run:
 		--net=host \
 		--name $(CONTAINER_NAME) \
 		--ulimit nofile=1024:524288 \
+		-v /dev:/dev \
 		--mount type=bind,source=$(shell pwd)/catkin_ws,target=/root/catkin_ws \
 		--mount type=volume,source=$(CLAUDE_VOLUME),target=/root/.claude \
 		--mount type=volume,source=$(ZSH_VOLUME),target=/root/.zsh-cache \

@@ -9,7 +9,7 @@ Publishes to lane_follower/LaneData
 from __future__ import annotations
 from dataclasses import dataclass
 from collections import deque
-from typing import Any, Final, Protocol
+from typing import Any, Final, Protocol, Tuple
 import math
 import time
 
@@ -546,7 +546,7 @@ slightly looser metric but adequate at the default 0.15 threshold.
 
 
 # Internal helper type: (points_Nx2, bbox(x_min, y_min, x_max, y_max), centroid_x)
-_Cand = tuple[np.ndarray, tuple[int, int, int, int], float]
+_Cand = Tuple[np.ndarray, Tuple[int, int, int, int], float]
 
 
 def _contour_to_points(contour: np.ndarray) -> np.ndarray:
